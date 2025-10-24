@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Loader, Check, Brain, Search, Palette, Code, Rocket, TrendingUp } from 'lucide-react';
 import axios from 'axios';
+import { getApiUrl, getAuthHeaders } from '../config/api';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 function BuildingProgress({ prompt, onComplete }) {
   const [currentStep, setCurrentStep] = useState(0);
@@ -61,105 +61,81 @@ function BuildingProgress({ prompt, onComplete }) {
   }, []);
 
   const buildApp = async () => {
-    try {
-      // Step 1: Strategy & Validation
-      setCurrentStep(0);
-      addLog('🧠 Strategy Agent starting analysis...');
-      
-      const validationResponse = await axios.post(`${API_URL}/api/validate/idea`, {
-        idea: prompt,
-        targetMarket: extractTargetMarket(prompt),
-        budget: 'Not specified'
-      });
-
-      addLog('✅ Market validation complete!');
-      setCompletedSteps([0]);
-      await sleep(1000);
-
-      // Step 2: REAL Market Research
-      setCurrentStep(1);
-      addLog('🔍 Research Agent scanning the internet...');
-      
-      const researchResponse = await axios.post(`${API_URL}/api/research/market`, {
-        idea: prompt,
-        targetCountry: extractTargetMarket(prompt)
-      });
-
-      addLog(`✅ Found ${researchResponse.data.analysis._meta.competitors_found} competitors`);
-      addLog('✅ Market trends analyzed from real data');
-      setCompletedSteps([0, 1]);
-      await sleep(1000);
-
-      // Step 3: Revenue Analysis
-      setCurrentStep(2);
-      addLog('📈 Revenue Agent calculating potential...');
-      await sleep(2000);
-      addLog('✅ Revenue model created with 3-year projections');
-      setCompletedSteps([0, 1, 2]);
-      await sleep(1000);
-
-      // Step 4: Design
-      setCurrentStep(3);
-      addLog('🎨 Design Agent creating UI mockups...');
-      await sleep(2500);
-      addLog('✅ Design system ready: colors, typography, components');
-      setCompletedSteps([0, 1, 2, 3]);
-      await sleep(1000);
-
-      // Step 5: Code Generation (REAL!)
-      setCurrentStep(4);
-      addLog('💻 Code Agent generating React components...');
-      
-      const codeResponse = await axios.post(`${API_URL}/api/generate/app`, {
+  try {
+    // Step 1: Start master build (returns immediately with build ID)
+    addLog('🚀 Starting master build orchestrator...');
+    
+    const startResponse = await axios.post(
+      getApiUrl('/api/master/build'),
+      {
         projectName: extractProjectName(prompt),
         description: prompt,
+        targetCountry: extractTargetMarket(prompt),
         features: extractFeatures(prompt),
         targetPlatform: 'web',
         framework: 'react',
-        database: 'postgresql',
-        authentication: true
-      }, {
+        database: 'postgresql'
+      },
+      {
         headers: {
-          'x-user-tier': 'starter' // Simulate paid tier for demo
+          ...getAuthHeaders(),
+          'x-user-tier': 'starter' // Or get from user context
         }
-      });
+      }
+    );
 
-      addLog(`💻 Generated ${codeResponse.data.generated.frontend.files} frontend files`);
-      addLog(`💻 Generated ${codeResponse.data.generated.backend.files} backend files`);
-      addLog(`💻 Created ${codeResponse.data.generated.database.tables} database tables`);
-      addLog('✅ Full-stack code generated: React + Node.js + PostgreSQL');
-      setCompletedSteps([0, 1, 2, 3, 4]);
-      await sleep(1000);
+    const buildId = startResponse.data.build_id;
+    addLog(`✅ Build started! ID: ${buildId}`);
 
-      // Step 6: Deployment Package
-      setCurrentStep(5);
-      addLog('🚀 Deploy Agent packaging application...');
-      await sleep(2000);
-      addLog('✅ Deployment ready: Docker, CI/CD, hosting config');
-      setCompletedSteps([0, 1, 2, 3, 4, 5]);
-      await sleep(1000);
+    // Step 2: Poll for progress
+    const pollInterval = setInterval(async () => {
+      try {
+        const progressResponse = await axios.get(
+          getApiUrl(`/api/master/build/${buildId}`)
+        );
 
-      // Complete!
-      addLog('🎉 Your app is ready!');
-      
-      onComplete({
-        validation: validationResponse.data.validation,
-        research: researchResponse.data.analysis,
-        code: codeResponse.data,
-        prompt: prompt,
-        files_generated: codeResponse.data.generated.frontend.files + codeResponse.data.generated.backend.files,
-        lines_of_code: codeResponse.data.generated.frontend.lines + codeResponse.data.generated.backend.lines,
-        download_url: codeResponse.data.download_url,
-        estimated_value: '$50,000',
-        time_saved: '6 months'
-      });
+        const { status, phase, progress, current_task, logs: buildLogs, results } = progressResponse.data;
 
-    } catch (err) {
-      console.error('Build error:', err);
-      setError(err.response?.data?.error || 'Failed to build app. Please try again.');
-      addLog('❌ Error: ' + (err.response?.data?.error || 'Build failed'));
-    }
-  };
+        // Update progress
+        setCurrentStep(Math.floor(progress / 20)); // Map to agent steps
+        
+        // Add new logs
+        if (buildLogs) {
+          buildLogs.forEach(log => {
+            if (!agentLogs.find(l => l.timestamp === log.timestamp)) {
+              addLog(log.message);
+            }
+          });
+        }
+
+        // Check if complete
+        if (status === 'completed') {
+          clearInterval(pollInterval);
+          addLog('🎉 Build complete!');
+          
+          // Pass results to parent
+          onComplete({
+            ...results,
+            download_url: progressResponse.data.download_url
+          });
+        }
+
+        // Check if failed
+        if (status === 'failed') {
+          clearInterval(pollInterval);
+          setError(progressResponse.data.error || 'Build failed');
+        }
+
+      } catch (pollError) {
+        console.error('Poll error:', pollError);
+      }
+    }, 2000); // Poll every 2 seconds
+
+  } catch (error) {
+    console.error('Build error:', error);
+    setError(error.response?.data?.error || 'Failed to start build');
+  }
+};
 
   const extractProjectName = (prompt) => {
     // Extract project name from prompt
