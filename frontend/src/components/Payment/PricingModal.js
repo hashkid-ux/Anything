@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Crown, Zap, Loader } from 'lucide-react';
+import { X, Check, Crown, Zap, Loader, Sparkles } from 'lucide-react';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -29,7 +29,6 @@ function PricingModal({ isOpen, onClose, currentTier, onUpgradeSuccess }) {
     setSelectedPlan(plan.id);
 
     try {
-      // Step 1: Create Razorpay order
       const orderResponse = await axios.post(`${API_URL}/api/payments/create-order`, {
         plan: plan.id
       }, {
@@ -40,7 +39,6 @@ function PricingModal({ isOpen, onClose, currentTier, onUpgradeSuccess }) {
 
       const { order, razorpay_key } = orderResponse.data;
 
-      // Step 2: Open Razorpay checkout
       const options = {
         key: razorpay_key,
         amount: order.amount,
@@ -49,7 +47,6 @@ function PricingModal({ isOpen, onClose, currentTier, onUpgradeSuccess }) {
         description: `${plan.name} Plan Subscription`,
         order_id: order.id,
         handler: async function (response) {
-          // Step 3: Verify payment
           try {
             const verifyResponse = await axios.post(
               `${API_URL}/api/payments/verify`,
@@ -67,7 +64,6 @@ function PricingModal({ isOpen, onClose, currentTier, onUpgradeSuccess }) {
             );
 
             if (verifyResponse.data.success) {
-              // Update user tier locally
               const user = JSON.parse(localStorage.getItem('user'));
               user.tier = plan.id;
               user.credits = plan.credits;
@@ -104,34 +100,34 @@ function PricingModal({ isOpen, onClose, currentTier, onUpgradeSuccess }) {
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 border-2 border-white/20 rounded-2xl max-w-5xl w-full p-8 relative my-8">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-5xl w-full p-8 relative my-8">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors z-10"
+          className="absolute top-4 right-4 p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
         >
-          <X className="w-6 h-6" />
+          <X className="w-5 h-5 text-slate-400" />
         </button>
 
         {/* Header */}
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-white mb-4">
+        <div className="text-center mb-10">
+          <h2 className="text-3xl font-bold text-white mb-2">
             Choose Your Plan
           </h2>
-          <p className="text-gray-400 text-lg">
-            Upgrade to unlock unlimited app building power
+          <p className="text-slate-400">
+            Unlock unlimited AI-powered app building
           </p>
         </div>
 
         {/* Plans Grid */}
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-3 gap-5 mb-8">
           {/* Free Plan */}
           <PlanCard
             name="Free"
             price="₹0"
             priceUsd="$0"
             period="/forever"
-            icon={<Zap className="w-8 h-8" />}
+            icon={<Zap className="w-6 h-6" />}
             features={[
               '3 app builds',
               'Market research',
@@ -143,6 +139,7 @@ function PricingModal({ isOpen, onClose, currentTier, onUpgradeSuccess }) {
             onSelect={() => {}}
             disabled={true}
             buttonText="Current Plan"
+            color="from-slate-600 to-slate-700"
           />
 
           {/* Starter Plan */}
@@ -151,11 +148,11 @@ function PricingModal({ isOpen, onClose, currentTier, onUpgradeSuccess }) {
             price="₹2,499"
             priceUsd="$30"
             period="/month"
-            icon={<Zap className="w-8 h-8" />}
+            icon={<Sparkles className="w-6 h-6" />}
             features={[
               '100 builds/month',
               'Full code generation',
-              'QA testing',
+              'QA testing included',
               'Deployment guides',
               'Email support',
               'Download source code'
@@ -165,6 +162,7 @@ function PricingModal({ isOpen, onClose, currentTier, onUpgradeSuccess }) {
             onSelect={() => handleUpgrade(plans.find(p => p.id === 'starter'))}
             loading={loading && selectedPlan === 'starter'}
             disabled={currentTier === 'premium'}
+            color="from-blue-600 to-indigo-600"
           />
 
           {/* Premium Plan */}
@@ -173,7 +171,7 @@ function PricingModal({ isOpen, onClose, currentTier, onUpgradeSuccess }) {
             price="₹8,299"
             priceUsd="$100"
             period="/month"
-            icon={<Crown className="w-8 h-8" />}
+            icon={<Crown className="w-6 h-6" />}
             features={[
               'Unlimited builds',
               'Priority AI models',
@@ -188,21 +186,22 @@ function PricingModal({ isOpen, onClose, currentTier, onUpgradeSuccess }) {
             onSelect={() => handleUpgrade(plans.find(p => p.id === 'premium'))}
             loading={loading && selectedPlan === 'premium'}
             premium={true}
+            color="from-purple-600 to-pink-600"
           />
         </div>
 
         {/* Trust Indicators */}
-        <div className="mt-12 grid grid-cols-3 gap-4 text-center text-sm text-gray-400">
+        <div className="grid grid-cols-3 gap-4 text-center text-xs text-slate-500">
           <div>
-            <div className="text-2xl font-bold text-white mb-1">🔒</div>
+            <div className="text-xl mb-1">🔒</div>
             <div>Secure Payment</div>
           </div>
           <div>
-            <div className="text-2xl font-bold text-white mb-1">💳</div>
+            <div className="text-xl mb-1">💳</div>
             <div>Razorpay Protected</div>
           </div>
           <div>
-            <div className="text-2xl font-bold text-white mb-1">↩️</div>
+            <div className="text-xl mb-1">↩️</div>
             <div>Cancel Anytime</div>
           </div>
         </div>
@@ -224,52 +223,51 @@ function PlanCard({
   loading, 
   disabled,
   premium,
-  buttonText 
+  buttonText,
+  color
 }) {
   return (
-    <div className={`relative rounded-2xl p-6 transition-all ${
+    <div className={`relative rounded-xl p-6 transition-all ${
       premium 
-        ? 'bg-gradient-to-br from-purple-600/20 to-pink-600/20 border-2 border-purple-500/50 scale-105' 
+        ? 'bg-gradient-to-br from-purple-600/10 to-pink-600/10 border-2 border-purple-500/30 scale-105' 
         : current
-        ? 'bg-white/10 border-2 border-green-500/50'
-        : 'bg-white/5 border-2 border-white/10 hover:border-white/30'
+        ? 'bg-slate-800/50 border-2 border-emerald-500/30'
+        : 'bg-slate-800/30 border border-slate-700 hover:border-slate-600'
     }`}>
       {recommended && (
-        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs font-bold px-4 py-1 rounded-full">
+        <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-full">
           MOST POPULAR
         </div>
       )}
 
       {current && (
-        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white text-xs font-bold px-4 py-1 rounded-full">
+        <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full">
           CURRENT PLAN
         </div>
       )}
 
       {/* Icon */}
-      <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 ${
-        premium ? 'bg-gradient-to-br from-purple-600 to-pink-600' : 'bg-gradient-to-br from-blue-600 to-purple-600'
-      }`}>
+      <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 bg-gradient-to-br ${color}`}>
         {icon}
       </div>
 
       {/* Name */}
-      <h3 className="text-2xl font-bold text-white mb-2">{name}</h3>
+      <h3 className="text-xl font-bold text-white mb-2">{name}</h3>
 
       {/* Price */}
-      <div className="mb-6">
+      <div className="mb-5">
         <div className="flex items-baseline gap-2">
-          <span className="text-4xl font-bold text-white">{price}</span>
-          <span className="text-gray-400">{period}</span>
+          <span className="text-3xl font-bold text-white">{price}</span>
+          <span className="text-slate-500 text-sm">{period}</span>
         </div>
-        <div className="text-sm text-gray-400 mt-1">{priceUsd} USD</div>
+        <div className="text-xs text-slate-500 mt-1">{priceUsd} USD</div>
       </div>
 
       {/* Features */}
-      <ul className="space-y-3 mb-6">
+      <ul className="space-y-2.5 mb-6">
         {features.map((feature, index) => (
-          <li key={index} className="flex items-start gap-2 text-gray-300 text-sm">
-            <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
+          <li key={index} className="flex items-start gap-2 text-slate-300 text-sm">
+            <Check className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
             <span>{feature}</span>
           </li>
         ))}
@@ -279,19 +277,19 @@ function PlanCard({
       <button
         onClick={onSelect}
         disabled={disabled || loading || current}
-        className={`w-full py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 ${
+        className={`w-full py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 text-sm ${
           current
-            ? 'bg-green-500/20 text-green-300 cursor-not-allowed'
+            ? 'bg-emerald-500/20 text-emerald-300 cursor-not-allowed'
             : disabled
-            ? 'bg-white/10 text-gray-500 cursor-not-allowed'
+            ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
             : premium
-            ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white'
-            : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white'
+            ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white'
+            : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white'
         }`}
       >
         {loading ? (
           <>
-            <Loader className="w-5 h-5 animate-spin" />
+            <Loader className="w-4 h-4 animate-spin" />
             <span>Processing...</span>
           </>
         ) : current ? (

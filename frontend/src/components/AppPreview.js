@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, ExternalLink, Share2, Sparkles, Code, Smartphone, Globe, DollarSign, TrendingUp, Users, Target, CheckCircle, ArrowRight, Copy, Play, Zap, Brain, Package, Database, Layers, FileCode, Award, BarChart3, Rocket as RocketIcon } from 'lucide-react';
+import { Download, ExternalLink, Share2, Code, CheckCircle, ArrowRight, Copy, Zap, Award, BarChart3, Rocket, Target, Users, DollarSign, Globe, Database, Layers, FileCode, X } from 'lucide-react';
 
 function AppPreview({ data, onStartNew }) {
   const [activeTab, setActiveTab] = useState('overview');
@@ -11,7 +11,6 @@ function AppPreview({ data, onStartNew }) {
   const validation = data.validation;
 
   useEffect(() => {
-    // Celebration confetti effect
     setTimeout(() => setCelebrationActive(false), 3000);
   }, []);
 
@@ -59,11 +58,11 @@ model User {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Celebration Confetti Effect */}
+    <div className="min-h-screen relative">
+      {/* Celebration Confetti */}
       {celebrationActive && (
         <div className="fixed inset-0 pointer-events-none z-50">
-          {[...Array(50)].map((_, i) => (
+          {[...Array(30)].map((_, i) => (
             <div
               key={i}
               className="absolute w-2 h-2 rounded-full animate-confetti"
@@ -79,112 +78,106 @@ model User {
         </div>
       )}
 
-      {/* Animated Background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 -left-48 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+      {/* Subtle Background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
+        <div className="absolute top-1/4 -left-48 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
+      <div className="relative z-10 max-w-6xl mx-auto px-4 py-12">
         {/* Hero Success Section */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-12">
           {/* Success Badge */}
-          <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full mb-8 animate-scale-in shadow-2xl">
-            <CheckCircle className="w-12 h-12 text-white animate-bounce" />
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full mb-6 shadow-2xl shadow-emerald-500/25">
+            <CheckCircle className="w-10 h-10 text-white" />
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-black text-white mb-6 animate-slide-up">
-            Your App is <span className="bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">Ready!</span> 🎉
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+            Your App is <span className="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">Ready!</span> 🎉
           </h1>
 
           {/* Stats Pills */}
-          <div className="flex flex-wrap justify-center gap-4 mb-8">
-            <StatPill icon={<FileCode />} label="Files" value={data.files_generated} color="blue" />
-            <StatPill icon={<Code />} label="Lines" value={data.lines_of_code.toLocaleString()} color="purple" />
-            <StatPill icon={<Zap />} label="Time Saved" value={data.time_saved} color="green" />
-            <StatPill icon={<Award />} label="QA Score" value={`${data.qa_results?.overall_score}/100`} color="orange" />
+          <div className="flex flex-wrap justify-center gap-3 mb-8">
+            <StatPill icon={<FileCode />} label="Files" value={data.files_generated} />
+            <StatPill icon={<Code />} label="Lines" value={data.lines_of_code.toLocaleString()} />
+            <StatPill icon={<Zap />} label="Time Saved" value={data.time_saved} />
+            <StatPill icon={<Award />} label="QA Score" value={`${data.qa_results?.overall_score}/100`} />
           </div>
 
-          {/* Main Action Buttons */}
-          <div className="flex flex-wrap justify-center gap-4 mb-8">
+          {/* Main Actions */}
+          <div className="flex flex-wrap justify-center gap-3 mb-6">
             <a 
               href={`http://localhost:5000${data.download_url}`}
               download
-              className="group relative px-8 py-4 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-white font-bold rounded-2xl shadow-2xl hover:shadow-purple-500/50 flex items-center gap-3 transition-all hover:scale-105 active:scale-95"
+              className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold rounded-xl shadow-lg hover:shadow-purple-500/25 transition-all hover:scale-[1.02]"
             >
-              <Download className="w-6 h-6" />
+              <Download className="w-5 h-5" />
               <span>Download Code</span>
-              <span className="text-sm opacity-80">({data.files_generated} files)</span>
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-pink-600 rounded-2xl blur-xl opacity-50 group-hover:opacity-75 transition-opacity -z-10"></div>
+              <span className="text-xs opacity-80">({data.files_generated} files)</span>
             </a>
             
             {data.deployment_ready && (
               <button 
                 onClick={() => setShowDeployModal(true)}
-                className="group px-8 py-4 bg-white/10 backdrop-blur-md border-2 border-white/20 hover:bg-white/20 hover:border-white/30 text-white font-bold rounded-2xl flex items-center gap-3 transition-all hover:scale-105"
+                className="group flex items-center gap-2 px-6 py-3 bg-slate-800/50 backdrop-blur-sm border border-slate-700 hover:bg-slate-800 hover:border-slate-600 text-white font-semibold rounded-xl transition-all hover:scale-[1.02]"
               >
-                <RocketIcon className="w-6 h-6 group-hover:animate-bounce" />
+                <Rocket className="w-5 h-5 group-hover:animate-bounce" />
                 <span>Deploy Now</span>
               </button>
             )}
             
             <button 
               onClick={() => setShowShareModal(true)}
-              className="px-8 py-4 bg-white/10 backdrop-blur-md border-2 border-white/20 hover:bg-white/20 hover:border-white/30 text-white font-bold rounded-2xl flex items-center gap-3 transition-all hover:scale-105"
+              className="px-6 py-3 bg-slate-800/50 backdrop-blur-sm border border-slate-700 hover:bg-slate-800 hover:border-slate-600 text-white font-semibold rounded-xl transition-all hover:scale-[1.02] flex items-center gap-2"
             >
-              <Share2 className="w-6 h-6" />
+              <Share2 className="w-5 h-5" />
               <span>Share</span>
             </button>
           </div>
 
           {/* Deployment Ready Badge */}
           {data.deployment_ready && (
-            <div className="inline-flex items-center gap-2 bg-green-500/20 border-2 border-green-500/50 px-6 py-3 rounded-full animate-pulse">
-              <CheckCircle className="w-5 h-5 text-green-400" />
-              <span className="text-green-300 font-bold">Production Ready • QA Passed • Deploy Anytime</span>
+            <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 px-4 py-2 rounded-full">
+              <CheckCircle className="w-4 h-4 text-emerald-400" />
+              <span className="text-emerald-300 font-medium text-sm">Production Ready • Deploy Anytime</span>
             </div>
           )}
         </div>
 
-        {/* Key Metrics Cards */}
-        <div className="grid md:grid-cols-4 gap-6 mb-12">
+        {/* Key Metrics */}
+        <div className="grid md:grid-cols-4 gap-4 mb-10">
           <MetricCard
-            icon={<DollarSign className="w-8 h-8" />}
+            icon={<DollarSign className="w-6 h-6" />}
             label="Estimated Value"
             value={data.estimated_value}
-            color="from-green-500 to-emerald-600"
-            detail="Market value"
+            color="from-emerald-500 to-teal-600"
           />
           <MetricCard
-            icon={<TrendingUp className="w-8 h-8" />}
+            icon={<BarChart3 className="w-6 h-6" />}
             label="Viability Score"
             value={`${validation.viability_score}/100`}
-            color="from-blue-500 to-cyan-600"
-            detail="Business potential"
+            color="from-blue-500 to-indigo-600"
           />
           <MetricCard
-            icon={<Users className="w-8 h-8" />}
+            icon={<Users className="w-6 h-6" />}
             label="Market Size"
             value={validation.market_size?.som || 'Large'}
             color="from-purple-500 to-pink-600"
-            detail="Target audience"
           />
           <MetricCard
-            icon={<Target className="w-8 h-8" />}
-            label="Competition"
+            icon={<Target className="w-6 h-6" />}
+            label="Competitors"
             value={validation.competitors?.length || 0}
             color="from-orange-500 to-red-600"
-            detail="Analyzed"
           />
         </div>
 
-        {/* Enhanced Tab Navigation */}
-        <div className="flex gap-3 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+        {/* Tabs */}
+        <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
           <TabButton 
             active={activeTab === 'overview'} 
             onClick={() => setActiveTab('overview')}
-            icon={<Sparkles />}
-            badge={null}
+            icon={<BarChart3 />}
           >
             Overview
           </TabButton>
@@ -206,7 +199,7 @@ model User {
           <TabButton 
             active={activeTab === 'market'} 
             onClick={() => setActiveTab('market')}
-            icon={<BarChart3 />}
+            icon={<Target />}
           >
             Market
           </TabButton>
@@ -221,24 +214,24 @@ model User {
         </div>
 
         {/* Content Area */}
-        <div className="space-y-8">
+        <div className="space-y-6">
           {activeTab === 'overview' && (
             <div className="space-y-6 animate-fade-in">
-              {/* Value Proposition Card */}
-              <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 backdrop-blur-xl border-2 border-purple-500/30 rounded-3xl p-8">
-                <div className="flex items-start gap-4 mb-6">
-                  <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl">
-                    <Sparkles className="w-8 h-8 text-white" />
+              {/* Value Proposition */}
+              <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 backdrop-blur-sm border border-purple-500/20 rounded-xl p-6">
+                <div className="flex items-start gap-4">
+                  <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
+                    <Target className="w-6 h-6 text-white" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-2xl font-black text-white mb-3">Unique Value Proposition</h3>
-                    <p className="text-xl text-gray-200 leading-relaxed">{validation.unique_value_proposition}</p>
+                    <h3 className="text-lg font-bold text-white mb-2">Unique Value Proposition</h3>
+                    <p className="text-slate-300 leading-relaxed">{validation.unique_value_proposition}</p>
                   </div>
                 </div>
               </div>
 
-              {/* Quick Stats Grid */}
-              <div className="grid md:grid-cols-3 gap-6">
+              {/* Quick Stats */}
+              <div className="grid md:grid-cols-3 gap-4">
                 <QuickStatCard
                   title="Generated Files"
                   items={[
@@ -246,8 +239,8 @@ model User {
                     { label: 'API Routes', value: Math.floor(data.files_generated * 0.3) },
                     { label: 'Database Models', value: Math.floor(data.files_generated * 0.3) }
                   ]}
-                  icon={<Package />}
-                  color="from-blue-500 to-cyan-600"
+                  icon={<FileCode />}
+                  color="from-blue-500 to-indigo-600"
                 />
                 <QuickStatCard
                   title="Tech Stack"
@@ -267,33 +260,33 @@ model User {
                     { label: 'Best Practices', value: `${data.qa_results?.code_quality?.score || 88}/100` }
                   ]}
                   icon={<Award />}
-                  color="from-green-500 to-emerald-600"
+                  color="from-emerald-500 to-teal-600"
                 />
               </div>
 
               {/* Target Audience */}
-              <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8">
-                <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                  <Users className="w-7 h-7 text-blue-400" />
+              <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-400" />
                   Target Audience
                 </h3>
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-3">Primary Persona</h4>
-                    <p className="text-gray-200 text-lg">{validation.target_audience.primary_persona}</p>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">Primary Persona</h4>
+                    <p className="text-slate-300">{validation.target_audience.primary_persona}</p>
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-3">Demographics</h4>
-                    <p className="text-gray-200 text-lg">{validation.target_audience.demographics}</p>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">Demographics</h4>
+                    <p className="text-slate-300">{validation.target_audience.demographics}</p>
                   </div>
                 </div>
-                <div className="mt-6">
-                  <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-3">Key Pain Points</h4>
-                  <div className="grid md:grid-cols-2 gap-3">
+                <div className="mt-4">
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Key Pain Points</h4>
+                  <div className="grid md:grid-cols-2 gap-2">
                     {validation.target_audience.pain_points.map((pain, i) => (
-                      <div key={i} className="flex items-start gap-3 bg-white/5 rounded-xl p-4 hover:bg-white/10 transition-colors">
-                        <Target className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
-                        <span className="text-gray-300">{pain}</span>
+                      <div key={i} className="flex items-start gap-2 bg-slate-800/30 rounded-lg p-3">
+                        <Target className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
+                        <span className="text-slate-400 text-sm">{pain}</span>
                       </div>
                     ))}
                   </div>
@@ -301,14 +294,14 @@ model User {
               </div>
 
               {/* Recommendation */}
-              <div className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-xl border-2 border-green-500/30 rounded-3xl p-8">
+              <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 backdrop-blur-sm border border-emerald-500/20 rounded-xl p-6">
                 <div className="flex items-start gap-4">
-                  <div className="p-4 bg-green-500 rounded-2xl">
-                    <CheckCircle className="w-8 h-8 text-white" />
+                  <div className="p-3 bg-emerald-500 rounded-xl">
+                    <CheckCircle className="w-6 h-6 text-white" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-2xl font-black text-white mb-3">AI Recommendation</h3>
-                    <p className="text-xl text-gray-200 leading-relaxed">{validation.recommendation}</p>
+                    <h3 className="text-lg font-bold text-white mb-2">AI Recommendation</h3>
+                    <p className="text-slate-300 leading-relaxed">{validation.recommendation}</p>
                   </div>
                 </div>
               </div>
@@ -318,17 +311,17 @@ model User {
           {activeTab === 'code' && (
             <div className="space-y-6 animate-fade-in">
               {/* Code Browser */}
-              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl overflow-hidden">
+              <div className="bg-black/40 backdrop-blur-sm border border-slate-700 rounded-xl overflow-hidden">
                 {/* File Tabs */}
-                <div className="bg-white/5 border-b border-white/10 px-4 py-3 flex gap-2 overflow-x-auto">
+                <div className="bg-slate-800/50 border-b border-slate-700 px-4 py-2 flex gap-2 overflow-x-auto">
                   {Object.keys(codePreview).map((file) => (
                     <button
                       key={file}
                       onClick={() => setSelectedCodeFile(file)}
-                      className={`px-4 py-2 rounded-lg text-sm font-mono transition-all whitespace-nowrap ${
+                      className={`px-3 py-2 rounded-lg text-xs font-mono transition-all whitespace-nowrap ${
                         selectedCodeFile === file
                           ? 'bg-purple-500 text-white'
-                          : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                          : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-slate-300'
                       }`}
                     >
                       {file}
@@ -338,12 +331,12 @@ model User {
 
                 {/* Code Content */}
                 <div className="relative">
-                  <button className="absolute top-4 right-4 px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-white text-sm font-semibold flex items-center gap-2 transition-all">
-                    <Copy className="w-4 h-4" />
+                  <button className="absolute top-4 right-4 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-white text-xs font-medium flex items-center gap-2 transition-all">
+                    <Copy className="w-3.5 h-3.5" />
                     Copy
                   </button>
-                  <pre className="p-8 overflow-x-auto">
-                    <code className="text-gray-300 font-mono text-sm leading-relaxed">
+                  <pre className="p-6 overflow-x-auto">
+                    <code className="text-slate-300 font-mono text-xs leading-relaxed">
                       {codePreview[selectedCodeFile]}
                     </code>
                   </pre>
@@ -351,13 +344,13 @@ model User {
               </div>
 
               {/* Code Packages */}
-              <div className="grid md:grid-cols-3 gap-6">
+              <div className="grid md:grid-cols-3 gap-4">
                 <CodePackageCard
                   icon={<Globe />}
                   title="Frontend"
                   tech="React + Tailwind"
                   files={`${Math.floor(data.files_generated * 0.5)} files`}
-                  color="from-blue-500 to-cyan-600"
+                  color="from-blue-500 to-indigo-600"
                 />
                 <CodePackageCard
                   icon={<Database />}
@@ -371,60 +364,59 @@ model User {
                   title="Database"
                   tech="PostgreSQL + Prisma"
                   files={`${Math.floor(data.files_generated * 0.2)} files`}
-                  color="from-green-500 to-emerald-600"
+                  color="from-emerald-500 to-teal-600"
                 />
               </div>
             </div>
           )}
 
           {activeTab === 'architecture' && (
-            <div className="space-y-6 animate-fade-in">
+            <div className="animate-fade-in">
               <ArchitectureDiagram />
             </div>
           )}
 
           {activeTab === 'market' && (
-            <div className="space-y-6 animate-fade-in">
+            <div className="animate-fade-in">
               <MarketAnalysisSection validation={validation} />
             </div>
           )}
 
           {activeTab === 'qa' && (
-            <div className="space-y-6 animate-fade-in">
+            <div className="animate-fade-in">
               <QAReportSection qaResults={data.qa_results} />
             </div>
           )}
         </div>
 
         {/* Next Steps CTA */}
-        <div className="mt-16 bg-gradient-to-r from-blue-600/20 via-purple-600/20 to-pink-600/20 backdrop-blur-xl border-2 border-purple-500/30 rounded-3xl p-12 text-center">
-          <h3 className="text-3xl font-black text-white mb-4">What's Next?</h3>
-          <p className="text-xl text-gray-300 mb-8">Deploy your app and start making money</p>
-          <div className="flex flex-wrap justify-center gap-4">
+        <div className="mt-12 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-pink-600/10 backdrop-blur-sm border border-purple-500/20 rounded-xl p-8 text-center">
+          <h3 className="text-2xl font-bold text-white mb-3">What's Next?</h3>
+          <p className="text-slate-400 mb-6">Deploy your app and start generating revenue</p>
+          <div className="flex flex-wrap justify-center gap-3">
             <button 
               onClick={() => setShowDeployModal(true)}
-              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold rounded-2xl flex items-center gap-3 transition-all hover:scale-105 shadow-2xl"
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold rounded-xl flex items-center gap-2 transition-all hover:scale-[1.02]"
             >
-              <RocketIcon className="w-6 h-6" />
+              <Rocket className="w-5 h-5" />
               Deploy Now
             </button>
             <button 
               onClick={onStartNew}
-              className="px-8 py-4 bg-white/10 backdrop-blur-md border-2 border-white/20 hover:bg-white/20 text-white font-bold rounded-2xl flex items-center gap-3 transition-all hover:scale-105"
+              className="px-6 py-3 bg-slate-800/50 backdrop-blur-sm border border-slate-700 hover:bg-slate-800 text-white font-semibold rounded-xl flex items-center gap-2 transition-all hover:scale-[1.02]"
             >
               Build Another App
-              <ArrowRight className="w-6 h-6" />
+              <ArrowRight className="w-5 h-5" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Deploy Modal */}
+      {/* Modals */}
       {showDeployModal && (
         <DeployModal onClose={() => setShowDeployModal(false)} />
       )}
 
-      {/* Share Modal */}
       {showShareModal && (
         <ShareModal onClose={() => setShowShareModal(false)} />
       )}
@@ -446,34 +438,26 @@ model User {
 }
 
 // Supporting Components
-function StatPill({ icon, label, value, color }) {
-  const colors = {
-    blue: 'from-blue-500 to-cyan-600',
-    purple: 'from-purple-500 to-pink-600',
-    green: 'from-green-500 to-emerald-600',
-    orange: 'from-orange-500 to-red-600'
-  };
-
+function StatPill({ icon, label, value }) {
   return (
-    <div className={`inline-flex items-center gap-3 bg-gradient-to-r ${colors[color]} px-6 py-3 rounded-full`}>
-      <div className="text-white">{icon}</div>
+    <div className="inline-flex items-center gap-2 bg-slate-800/50 backdrop-blur-sm border border-slate-700 px-4 py-2 rounded-full">
+      <div className="text-slate-400">{icon}</div>
       <div>
-        <div className="text-white font-black text-lg tabular-nums">{value}</div>
-        <div className="text-white/80 text-xs font-medium">{label}</div>
+        <div className="text-white font-bold text-sm tabular-nums">{value}</div>
+        <div className="text-slate-500 text-xs">{label}</div>
       </div>
     </div>
   );
 }
 
-function MetricCard({ icon, label, value, color, detail }) {
+function MetricCard({ icon, label, value, color }) {
   return (
-    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 hover:scale-105 transition-all">
-      <div className={`inline-flex p-4 bg-gradient-to-br ${color} rounded-2xl mb-4`}>
+    <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-5 hover:bg-slate-800/50 hover:border-slate-600 transition-all">
+      <div className={`inline-flex p-3 bg-gradient-to-br ${color} rounded-xl mb-3`}>
         {icon}
       </div>
-      <div className="text-3xl font-black text-white mb-1 tabular-nums">{value}</div>
-      <div className="text-sm font-bold text-gray-400 uppercase tracking-wide">{label}</div>
-      <div className="text-xs text-gray-500 mt-1">{detail}</div>
+      <div className="text-2xl font-bold text-white mb-1 tabular-nums">{value}</div>
+      <div className="text-xs font-medium text-slate-500 uppercase">{label}</div>
     </div>
   );
 }
@@ -482,17 +466,17 @@ function TabButton({ active, onClick, icon, children, badge }) {
   return (
     <button
       onClick={onClick}
-      className={`relative flex items-center gap-2 px-6 py-4 rounded-2xl font-bold transition-all ${
+      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all whitespace-nowrap text-sm ${
         active 
-          ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-2xl scale-105' 
-          : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
+          ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg' 
+          : 'bg-slate-800/30 text-slate-400 hover:bg-slate-800/50 hover:text-slate-300 border border-slate-700'
       }`}
     >
       {icon}
       <span>{children}</span>
       {badge !== null && badge !== undefined && (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-          active ? 'bg-white/20 text-white' : 'bg-white/10 text-gray-400'
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+          active ? 'bg-white/20 text-white' : 'bg-slate-700 text-slate-500'
         }`}>
           {badge}
         </span>
@@ -503,18 +487,18 @@ function TabButton({ active, onClick, icon, children, badge }) {
 
 function QuickStatCard({ title, items, icon, color }) {
   return (
-    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className={`p-3 bg-gradient-to-br ${color} rounded-xl`}>
+    <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <div className={`p-2 bg-gradient-to-br ${color} rounded-lg`}>
           {icon}
         </div>
-        <h4 className="text-lg font-bold text-white">{title}</h4>
+        <h4 className="text-sm font-semibold text-white">{title}</h4>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2">
         {items.map((item, i) => (
-          <div key={i} className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm">{item.label}</span>
-            <span className="text-white font-bold">{item.value}</span>
+          <div key={i} className="flex justify-between items-center text-sm">
+            <span className="text-slate-400">{item.label}</span>
+            <span className="text-white font-semibold">{item.value}</span>
           </div>
         ))}
       </div>
@@ -524,46 +508,45 @@ function QuickStatCard({ title, items, icon, color }) {
 
 function CodePackageCard({ icon, title, tech, files, color }) {
   return (
-    <div className="group bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 hover:scale-105 transition-all">
-      <div className={`inline-flex p-4 bg-gradient-to-br ${color} rounded-xl mb-4 group-hover:scale-110 transition-transform`}>
+    <div className="group bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-5 hover:bg-slate-800/50 hover:border-slate-600 transition-all">
+      <div className={`inline-flex p-3 bg-gradient-to-br ${color} rounded-xl mb-3 group-hover:scale-110 transition-transform`}>
         {icon}
       </div>
-      <h4 className="text-xl font-bold text-white mb-2">{title}</h4>
-      <p className="text-gray-400 mb-1">{tech}</p>
-      <p className="text-gray-500 text-sm">{files}</p>
+      <h4 className="text-base font-semibold text-white mb-1">{title}</h4>
+      <p className="text-slate-400 text-sm mb-1">{tech}</p>
+      <p className="text-slate-500 text-xs">{files}</p>
     </div>
   );
 }
 
 function ArchitectureDiagram() {
   return (
-    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8">
-      <h3 className="text-2xl font-bold text-white mb-8 text-center">System Architecture</h3>
-      <div className="max-w-3xl mx-auto">
-        {/* Simplified architecture visualization */}
-        <div className="space-y-6">
+    <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-8">
+      <h3 className="text-xl font-bold text-white mb-6 text-center">System Architecture</h3>
+      <div className="max-w-2xl mx-auto">
+        <div className="space-y-4">
           <div className="text-center">
-            <div className="inline-flex items-center gap-3 bg-gradient-to-r from-blue-500 to-cyan-600 px-8 py-4 rounded-2xl">
-              <Globe className="w-6 h-6 text-white" />
-              <span className="text-white font-bold text-lg">React Frontend</span>
+            <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 px-6 py-3 rounded-xl">
+              <Globe className="w-5 h-5 text-white" />
+              <span className="text-white font-semibold">React Frontend</span>
             </div>
           </div>
           <div className="flex justify-center">
-            <div className="w-1 h-12 bg-gradient-to-b from-blue-500 to-purple-500"></div>
+            <div className="w-0.5 h-10 bg-gradient-to-b from-blue-500 to-purple-500"></div>
           </div>
           <div className="text-center">
-            <div className="inline-flex items-center gap-3 bg-gradient-to-r from-purple-500 to-pink-600 px-8 py-4 rounded-2xl">
-              <Layers className="w-6 h-6 text-white" />
-              <span className="text-white font-bold text-lg">Node.js Backend</span>
+            <div className="inline-flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-600 px-6 py-3 rounded-xl">
+              <Layers className="w-5 h-5 text-white" />
+              <span className="text-white font-semibold">Node.js Backend</span>
             </div>
           </div>
           <div className="flex justify-center">
-            <div className="w-1 h-12 bg-gradient-to-b from-purple-500 to-green-500"></div>
+            <div className="w-0.5 h-10 bg-gradient-to-b from-purple-500 to-emerald-500"></div>
           </div>
           <div className="text-center">
-            <div className="inline-flex items-center gap-3 bg-gradient-to-r from-green-500 to-emerald-600 px-8 py-4 rounded-2xl">
-              <Database className="w-6 h-6 text-white" />
-              <span className="text-white font-bold text-lg">PostgreSQL Database</span>
+            <div className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 px-6 py-3 rounded-xl">
+              <Database className="w-5 h-5 text-white" />
+              <span className="text-white font-semibold">PostgreSQL Database</span>
             </div>
           </div>
         </div>
@@ -574,14 +557,14 @@ function ArchitectureDiagram() {
 
 function MarketAnalysisSection({ validation }) {
   return (
-    <div className="space-y-6">
-      <div className="grid md:grid-cols-3 gap-6">
-        {['tam', 'sam', 'som'].map((key, i) => (
-          <div key={key} className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-xl border border-blue-500/30 rounded-2xl p-6">
-            <h4 className="text-sm font-bold text-gray-400 uppercase mb-2">
-              {key === 'tam' ? 'Total Addressable Market' : key === 'sam' ? 'Serviceable Market' : 'Obtainable Market'}
+    <div className="space-y-4">
+      <div className="grid md:grid-cols-3 gap-4">
+        {['tam', 'sam', 'som'].map((key) => (
+          <div key={key} className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 backdrop-blur-sm border border-blue-500/20 rounded-xl p-5">
+            <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">
+              {key === 'tam' ? 'Total Market' : key === 'sam' ? 'Serviceable Market' : 'Obtainable Market'}
             </h4>
-            <div className="text-3xl font-black text-white">{validation.market_size?.[key]}</div>
+            <div className="text-3xl font-bold text-white">{validation.market_size?.[key]}</div>
           </div>
         ))}
       </div>
@@ -592,20 +575,20 @@ function MarketAnalysisSection({ validation }) {
 function QAReportSection({ qaResults }) {
   const categories = [
     { key: 'code_quality', label: 'Code Quality', color: 'blue' },
-    { key: 'security', label: 'Security', color: 'green' },
+    { key: 'security', label: 'Security', color: 'emerald' },
     { key: 'performance', label: 'Performance', color: 'purple' },
     { key: 'functionality', label: 'Functionality', color: 'orange' }
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {categories.map(({ key, label, color }) => (
-        <div key={key} className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-xl font-bold text-white">{label}</h4>
-            <div className="text-3xl font-black text-white">{qaResults?.[key]?.score || 0}/100</div>
+        <div key={key} className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-base font-semibold text-white">{label}</h4>
+            <div className="text-2xl font-bold text-white">{qaResults?.[key]?.score || 0}/100</div>
           </div>
-          <div className="w-full bg-white/10 rounded-full h-3">
+          <div className="w-full bg-slate-700 rounded-full h-2">
             <div 
               className={`h-full bg-gradient-to-r from-${color}-500 to-${color}-600 rounded-full transition-all`}
               style={{ width: `${qaResults?.[key]?.score || 0}%` }}
@@ -618,147 +601,76 @@ function QAReportSection({ qaResults }) {
 }
 
 function DeployModal({ onClose }) {
-  const [selectedProvider, setSelectedProvider] = useState('vercel');
-
-  const providers = [
-    {
-      id: 'vercel',
-      name: 'Vercel',
-      icon: '▲',
-      type: 'Frontend',
-      time: '5 min',
-      cost: 'Free',
-      recommended: true,
-      color: 'from-blue-500 to-cyan-600'
-    },
-    {
-      id: 'railway',
-      name: 'Railway',
-      icon: '🚂',
-      type: 'Backend + DB',
-      time: '10 min',
-      cost: '$5/mo',
-      recommended: true,
-      color: 'from-purple-500 to-pink-600'
-    },
-    {
-      id: 'render',
-      name: 'Render',
-      icon: '🎨',
-      type: 'Full-Stack',
-      time: '15 min',
-      cost: 'Free tier',
-      recommended: false,
-      color: 'from-green-500 to-emerald-600'
-    }
-  ];
-
   return (
     <div 
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <div 
-        className="bg-gradient-to-br from-slate-900 to-slate-800 border-2 border-white/20 rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto animate-scale-in"
+        className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-8"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="sticky top-0 bg-slate-900/95 backdrop-blur-xl border-b border-white/10 px-8 py-6 flex items-center justify-between">
-          <div>
-            <h3 className="text-3xl font-black text-white mb-2">Deploy Your App</h3>
-            <p className="text-gray-400">Choose your deployment platform</p>
-          </div>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-2xl font-bold text-white">Deploy Your App</h3>
           <button 
             onClick={onClose}
-            className="p-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors"
+            className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
           >
-            <ExternalLink className="w-6 h-6 text-white" />
+            <X className="w-5 h-5 text-slate-400" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-8 space-y-6">
-          {/* Provider Cards */}
-          {providers.map((provider) => (
-            <button
-              key={provider.id}
-              onClick={() => setSelectedProvider(provider.id)}
-              className={`w-full text-left border-2 rounded-2xl p-6 transition-all ${
-                selectedProvider === provider.id
-                  ? 'border-purple-500 bg-purple-500/10 scale-105'
-                  : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
-              } ${provider.recommended ? 'relative' : ''}`}
-            >
-              {provider.recommended && (
-                <div className="absolute -top-3 right-6 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg">
-                  RECOMMENDED
-                </div>
-              )}
-              <div className="flex items-center gap-6">
-                <div className={`text-6xl bg-gradient-to-br ${provider.color} p-4 rounded-2xl`}>
-                  {provider.icon}
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-2xl font-bold text-white mb-1">{provider.name}</h4>
-                  <p className="text-gray-400 mb-3">{provider.type}</p>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="flex items-center gap-2 text-gray-300">
-                      <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
-                      {provider.time}
-                    </span>
-                    <span className="flex items-center gap-2 text-gray-300">
-                      <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                      {provider.cost}
-                    </span>
-                  </div>
-                </div>
-                {selectedProvider === provider.id && (
-                  <CheckCircle className="w-8 h-8 text-purple-400" />
-                )}
-              </div>
-            </button>
-          ))}
+        <div className="space-y-4">
+          <DeployOption
+            name="Vercel"
+            description="Best for frontend deployment"
+            time="5 min"
+            cost="Free"
+          />
+          <DeployOption
+            name="Railway"
+            description="Full-stack deployment"
+            time="10 min"
+            cost="$5/mo"
+          />
+        </div>
 
-          {/* Deployment Steps */}
-          <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-            <h4 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              <Play className="w-5 h-5 text-green-400" />
-              Quick Deploy Steps
-            </h4>
-            <ol className="space-y-3">
-              {[
-                'Install CLI: npm install -g vercel',
-                'Navigate to frontend folder',
-                'Run: vercel --prod',
-                'Your app is live! 🎉'
-              ].map((step, i) => (
-                <li key={i} className="flex items-start gap-3 text-gray-300">
-                  <span className="flex-shrink-0 w-6 h-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                    {i + 1}
-                  </span>
-                  <span>{step}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-4">
-            <button 
-              className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold rounded-2xl transition-all hover:scale-105 shadow-2xl"
-            >
-              View Full Guide
-            </button>
-            <button 
-              onClick={onClose}
-              className="px-6 py-4 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold rounded-2xl transition-all"
-            >
-              Close
-            </button>
-          </div>
+        <div className="mt-6 pt-6 border-t border-slate-800">
+          <h4 className="text-sm font-semibold text-white mb-3">Quick Deploy Steps</h4>
+          <ol className="space-y-2 text-sm text-slate-400">
+            <li className="flex items-start gap-2">
+              <span className="flex-shrink-0 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">1</span>
+              <span>Install CLI: npm install -g vercel</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="flex-shrink-0 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">2</span>
+              <span>Navigate to frontend folder</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="flex-shrink-0 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">3</span>
+              <span>Run: vercel --prod</span>
+            </li>
+          </ol>
         </div>
       </div>
     </div>
+  );
+}
+
+function DeployOption({ name, description, time, cost }) {
+  return (
+    <button className="w-full text-left border border-slate-700 hover:border-slate-600 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl p-4 transition-all">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="text-base font-semibold text-white mb-1">{name}</h4>
+          <p className="text-sm text-slate-400">{description}</p>
+        </div>
+        <div className="text-right">
+          <div className="text-sm text-slate-300 font-medium">{time}</div>
+          <div className="text-xs text-slate-500">{cost}</div>
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -772,48 +684,49 @@ function ShareModal({ onClose }) {
 
   return (
     <div 
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <div 
-        className="bg-gradient-to-br from-slate-900 to-slate-800 border-2 border-white/20 rounded-3xl max-w-lg w-full p-8 animate-scale-in"
+        className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-8"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-center mb-6">
-          <div className="inline-flex p-4 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl mb-4">
-            <Share2 className="w-8 h-8 text-white" />
+          <div className="inline-flex p-3 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl mb-4">
+            <Share2 className="w-6 h-6 text-white" />
           </div>
-          <h3 className="text-3xl font-black text-white mb-2">Share Your Success</h3>
-          <p className="text-gray-400">Let others see what you've built</p>
+          <h3 className="text-2xl font-bold text-white mb-2">Share Your Success</h3>
+          <p className="text-slate-400 text-sm">Let others see what you've built</p>
         </div>
 
         <div className="space-y-4">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center gap-3">
+          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-3 flex items-center gap-2">
             <input 
               type="text" 
               value={shareUrl}
               readOnly
-              className="flex-1 bg-transparent text-gray-300 text-sm focus:outline-none"
+              className="flex-1 bg-transparent text-slate-300 text-sm focus:outline-none"
             />
             <button 
               onClick={copyToClipboard}
-              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold rounded-lg transition-all flex items-center gap-2"
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-medium rounded-lg transition-all flex items-center gap-2 text-sm"
             >
               <Copy className="w-4 h-4" />
               Copy
             </button>
           </div>
 
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-4 gap-2">
             {[
-              { name: 'Twitter', color: 'from-blue-400 to-blue-600', icon: '𝕏' },
-              { name: 'LinkedIn', color: 'from-blue-600 to-blue-800', icon: 'in' },
-              { name: 'Facebook', color: 'from-blue-500 to-blue-700', icon: 'f' },
-              { name: 'Email', color: 'from-gray-600 to-gray-800', icon: '✉' }
+              { name: 'Twitter', icon: '𝕏', color: 'from-slate-600 to-slate-700' },
+              { name: 'LinkedIn', icon: 'in', color: 'from-blue-600 to-blue-700' },
+              { name: 'Facebook', icon: 'f', color: 'from-blue-500 to-blue-600' },
+              { name: 'Email', icon: '✉', color: 'from-slate-600 to-slate-700' }
             ].map((platform) => (
               <button
                 key={platform.name}
                 className={`bg-gradient-to-br ${platform.color} p-4 rounded-xl text-white font-bold text-2xl hover:scale-110 transition-transform`}
+                title={platform.name}
               >
                 {platform.icon}
               </button>
@@ -822,7 +735,7 @@ function ShareModal({ onClose }) {
 
           <button 
             onClick={onClose}
-            className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold rounded-xl transition-all"
+            className="w-full px-4 py-3 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 text-white font-medium rounded-xl transition-all text-sm"
           >
             Close
           </button>
