@@ -8,6 +8,9 @@ import Dashboard from './components/Dashboard/Dashboard';
 import LoginModal from './components/Auth/LoginModal';
 import OAuthCallback from './components/Auth/OAuthCallback';
 import PricingModal from './components/Payment/PricingModal';
+import NotificationPanel from './components/Notifications/NotificationPanel';
+import SettingsModal from './components/Settings/SettingsModal';
+import ProfileModal from './components/Profile/ProfileModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import { getApiUrl } from './config/api';
 
@@ -20,6 +23,9 @@ function App() {
   const [user, setUser] = useState(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
+  const [showNotificationPanel, setShowNotificationPanel] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [userPrompt, setUserPrompt] = useState('');
@@ -325,7 +331,7 @@ function App() {
 
                       {/* Notifications */}
                       <button 
-                        onClick={() => setView('dashboard')}
+                        onClick={() => setShowNotificationPanel(true)}
                         className="relative p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors"
                       >
                         <Bell className="w-5 h-5 text-white" />
@@ -403,12 +409,18 @@ function App() {
                               <UserMenuItem 
                                 icon={<User className="w-4 h-4" />}
                                 label="My Profile"
-                                onClick={() => {}}
+                                onClick={() => {
+                                  setShowUserMenu(false);
+                                  setShowProfileModal(true);
+                                }}
                               />
                               <UserMenuItem 
                                 icon={<Settings className="w-4 h-4" />}
                                 label="Settings"
-                                onClick={() => {}}
+                                onClick={() => {
+                                  setShowUserMenu(false);
+                                  setShowSettingsModal(true);
+                                }}
                               />
                               <UserMenuItem 
                                 icon={<Crown className="w-4 h-4" />}
@@ -539,6 +551,25 @@ function App() {
           onClose={() => setShowPricingModal(false)}
           currentTier={user?.tier || 'free'}
           onUpgradeSuccess={handleUpgradeSuccess}
+        />
+
+        <NotificationPanel
+          isOpen={showNotificationPanel}
+          onClose={() => setShowNotificationPanel(false)}
+          user={user}
+        />
+
+        <SettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          user={user}
+          onUpdate={handleLoginSuccess}
+        />
+
+        <ProfileModal
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          user={user}
         />
 
         {/* Floating Action Button (Mobile - when logged in) */}
