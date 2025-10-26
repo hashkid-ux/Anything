@@ -4,34 +4,59 @@ import {
   TrendingUp, Code, Users, DollarSign, Target, Award,
   Activity, BarChart3, CheckCircle, AlertCircle,
   ArrowRight, Globe, Database, Layers, ExternalLink, Clock,
-  Calendar, Sparkles, Package, Shield, Bell, Settings
+  Calendar, Sparkles, Package, Shield, Bell, Settings, Loader2
 } from 'lucide-react';
 import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState('overview');
   const [selectedProject, setSelectedProject] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
+  const [dashboardStats, setDashboardStats] = useState(null);
 
   useEffect(() => {
-    fetchProjects();
+    loadDashboardData();
   }, []);
 
-  const fetchProjects = async () => {
+  const loadDashboardData = async () => {
+    setLoading(true);
     try {
-      const response = await axios.get(`${API_URL}/api/auth/projects`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      // Load projects
+      const projectsRes = await axios.get('/api/projects');
+      setProjects(projectsRes.data.projects || []);
+
+      // Load dashboard overview
+      const overviewRes = await axios.get('/api/dashboard/overview');
+      setDashboardStats(overviewRes.data.stats);
+
+      // Load analytics
+      const analyticsRes = await axios.get('/api/dashboard/analytics', {
+        params: { days: 30 }
       });
-      setProjects(response.data.projects || []);
+      setAnalytics(analyticsRes.data);
+
     } catch (error) {
-      console.error('Failed to fetch projects:', error);
+      console.error('Failed to load dashboard data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteProject = async (projectId) => {
+    if (!window.confirm('Are you sure you want to delete this project?')) {
+      return;
+    }
+
+    try {
+      await axios.delete(`/api/projects/${projectId}`);
+      // Reload projects
+      const projectsRes = await axios.get('/api/projects');
+      setProjects(projectsRes.data.projects || []);
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      alert('Failed to delete project');
     }
   };
 
@@ -65,13 +90,22 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
   const tierConfig = getTierConfig(user.tier);
   const TierIcon = tierConfig.icon;
 
-  // Analytics data
-  const analytics = {
-    appsBuilt: projects.length,
-    totalUsers: projects.length * 245,
-    revenue: projects.length * 1234,
-    successRate: 98
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen relative">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
+          <div className="absolute top-1/4 -left-48 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl"></div>
+        </div>
+        <div className="relative z-10 max-w-7xl mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 text-purple-500 animate-spin mx-auto mb-4" />
+            <p className="text-slate-400">Loading dashboard...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen relative">
@@ -121,25 +155,25 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
           <StatCard
             icon={<Folder className="w-5 h-5" />}
             label="Projects"
-            value={analytics.appsBuilt}
+            value={dashboardStats?.totalProjects || 0}
             subtext="Apps built"
             color="from-blue-500 to-indigo-600"
             trend="up"
           />
           <StatCard
-            icon={<Users className="w-5 h-5" />}
-            label="Users"
-            value={analytics.totalUsers.toLocaleString()}
-            subtext="Total reach"
-            color="from-purple-500 to-pink-600"
+            icon={<CheckCircle className="w-5 h-5" />}
+            label="Completed"
+            value={dashboardStats?.completedProjects || 0}
+            subtext="Successful builds"
+            color="from-emerald-500 to-teal-600"
             trend="up"
           />
           <StatCard
-            icon={<TrendingUp className="w-5 h-5" />}
-            label="Revenue"
-            value={`$${analytics.revenue.toLocaleString()}`}
-            subtext="Generated"
-            color="from-emerald-500 to-teal-600"
+            icon={<Download className="w-5 h-5" />}
+            label="Downloads"
+            value={dashboardStats?.totalDownloads || 0}
+            subtext="Code packages"
+            color="from-purple-500 to-pink-600"
             trend="up"
           />
         </div>
@@ -191,54 +225,26 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
             Projects
           </ViewTab>
           <ViewTab 
-            active={activeView === 'activity'} 
-            onClick={() => setActiveView('activity')}
+            active={activeView === 'analytics'} 
+            onClick={() => setActiveView('analytics')}
             icon={<Activity className="w-4 h-4" />}
           >
-            Activity
+            Analytics
           </ViewTab>
         </div>
 
         {/* Content Area */}
         {activeView === 'overview' && (
           <div className="space-y-6 animate-fade-in">
-            {/* Quick Actions */}
-            <div className="grid md:grid-cols-3 gap-4">
-              <QuickActionCard
-                icon={<Rocket className="w-5 h-5" />}
-                title="Start Building"
-                description="Create a new app with AI"
-                color="from-blue-500/10 to-indigo-600/10"
-                borderColor="border-blue-500/20"
-                onClick={onBuildNew}
-              />
-              <QuickActionCard
-                icon={<Crown className="w-5 h-5" />}
-                title="Upgrade Plan"
-                description="Unlock unlimited builds"
-                color="from-purple-500/10 to-pink-600/10"
-                borderColor="border-purple-500/20"
-                onClick={onOpenPricing}
-              />
-              <QuickActionCard
-                icon={<Award className="w-5 h-5" />}
-                title="Analytics"
-                description="Track performance"
-                color="from-emerald-500/10 to-teal-600/10"
-                borderColor="border-emerald-500/20"
-                onClick={() => setActiveView('activity')}
-              />
-            </div>
-
-            {/* Recent Activity */}
+            {/* Recent Projects */}
             <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-400" />
-                  Recent Activity
+                  <Folder className="w-5 h-5 text-blue-400" />
+                  Recent Projects
                 </h3>
                 <button 
-                  onClick={() => setActiveView('activity')}
+                  onClick={() => setActiveView('projects')}
                   className="text-purple-400 hover:text-purple-300 text-sm font-medium transition-colors"
                 >
                   View All →
@@ -246,95 +252,81 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
               </div>
               <div className="space-y-3">
                 {projects.length > 0 ? (
-                  projects.slice(0, 5).map((project, i) => (
-                    <ActivityItem
-                      key={i}
-                      icon={<CheckCircle className="w-4 h-4 text-emerald-400" />}
-                      title={`Built ${project.name}`}
-                      time={new Date(project.created_at).toLocaleDateString()}
-                      status="completed"
-                    />
+                  projects.slice(0, 5).map((project) => (
+                    <ProjectRow key={project.id} project={project} />
                   ))
                 ) : (
                   <div className="text-center py-10">
                     <div className="inline-flex items-center justify-center w-12 h-12 bg-slate-700/30 rounded-full mb-3">
-                      <Activity className="w-6 h-6 text-slate-500" />
+                      <Folder className="w-6 h-6 text-slate-500" />
                     </div>
-                    <p className="text-slate-400 text-sm">No activity yet. Build your first app!</p>
+                    <p className="text-slate-400 text-sm">No projects yet. Build your first app!</p>
+                    <button
+                      onClick={onBuildNew}
+                      className="mt-4 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-lg hover:scale-105 transition-all"
+                    >
+                      Start Building
+                    </button>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Insights Grid */}
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Performance Insights */}
-              <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-emerald-400" />
-                  Performance Insights
-                </h3>
-                <div className="space-y-4">
-                  <InsightRow 
-                    label="Average Build Time"
-                    value="2.3 min"
-                    trend="+12%"
-                    positive={false}
-                  />
-                  <InsightRow 
-                    label="Success Rate"
-                    value="98%"
-                    trend="+5%"
-                    positive={true}
-                  />
-                  <InsightRow 
-                    label="Code Quality Score"
-                    value="87/100"
-                    trend="+3"
-                    positive={true}
-                  />
+            {/* Quick Stats */}
+            {analytics && (
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-emerald-400" />
+                    Last 30 Days
+                  </h3>
+                  <div className="space-y-4">
+                    <StatRow 
+                      label="Builds Started"
+                      value={analytics.totals?.buildsStarted || 0}
+                    />
+                    <StatRow 
+                      label="Builds Completed"
+                      value={analytics.totals?.buildsCompleted || 0}
+                    />
+                    <StatRow 
+                      label="Success Rate"
+                      value={`${Math.round((analytics.totals?.buildsCompleted / (analytics.totals?.buildsStarted || 1)) * 100)}%`}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Usage Statistics */}
-              <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-blue-400" />
-                  Usage Statistics
-                </h3>
-                <div className="space-y-4">
-                  <UsageBar 
-                    label="Credits Used"
-                    used={user.tier === 'free' ? 3 - user.credits : 100 - user.credits}
-                    total={user.tier === 'free' ? 3 : 100}
-                    color="blue"
-                  />
-                  <UsageBar 
-                    label="Storage Used"
-                    used={projects.length * 45}
-                    total={1000}
-                    color="purple"
-                  />
-                  <UsageBar 
-                    label="API Calls"
-                    used={projects.length * 127}
-                    total={10000}
-                    color="emerald"
-                  />
+                <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <Award className="w-5 h-5 text-purple-400" />
+                    Account Status
+                  </h3>
+                  <div className="space-y-4">
+                    <StatRow 
+                      label="Tier"
+                      value={tierConfig.label}
+                      valueColor={tierConfig.textColor}
+                    />
+                    <StatRow 
+                      label="Member Since"
+                      value={new Date(user.createdAt).toLocaleDateString()}
+                    />
+                    {user.subscriptionEnd && (
+                      <StatRow 
+                        label="Subscription Ends"
+                        value={new Date(user.subscriptionEnd).toLocaleDateString()}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
         {activeView === 'projects' && (
           <div className="animate-fade-in">
-            {loading ? (
-              <div className="text-center py-16">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
-                <p className="text-slate-400 mt-4">Loading projects...</p>
-              </div>
-            ) : projects.length === 0 ? (
+            {projects.length === 0 ? (
               <div className="text-center py-16">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-800/50 rounded-full mb-6">
                   <Folder className="w-8 h-8 text-slate-400" />
@@ -357,7 +349,7 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
                   <ProjectCard 
                     key={project.id} 
                     project={project}
-                    onSelect={() => setSelectedProject(project)}
+                    onDelete={handleDeleteProject}
                   />
                 ))}
               </div>
@@ -365,9 +357,31 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
           </div>
         )}
 
-        {activeView === 'activity' && (
-          <div className="animate-fade-in">
-            <ActivityTimeline projects={projects} />
+        {activeView === 'analytics' && analytics && (
+          <div className="animate-fade-in space-y-6">
+            <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+              <h3 className="text-xl font-semibold text-white mb-6">Build Activity (Last 30 Days)</h3>
+              <div className="grid md:grid-cols-3 gap-6 mb-6">
+                <MetricBox
+                  label="Total Builds"
+                  value={analytics.totals?.buildsStarted || 0}
+                  icon={<Rocket className="w-5 h-5" />}
+                  color="from-blue-500 to-indigo-600"
+                />
+                <MetricBox
+                  label="Completed"
+                  value={analytics.totals?.buildsCompleted || 0}
+                  icon={<CheckCircle className="w-5 h-5" />}
+                  color="from-emerald-500 to-teal-600"
+                />
+                <MetricBox
+                  label="Failed"
+                  value={analytics.totals?.buildsFailed || 0}
+                  icon={<AlertCircle className="w-5 h-5" />}
+                  color="from-red-500 to-orange-600"
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -465,82 +479,35 @@ function ViewTab({ active, onClick, icon, children, badge }) {
   );
 }
 
-function QuickActionCard({ icon, title, description, color, borderColor, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`group text-left bg-gradient-to-br ${color} backdrop-blur-sm border ${borderColor} rounded-xl p-5 hover:scale-[1.02] transition-all`}
-    >
-      <div className="text-slate-300 mb-3 group-hover:scale-110 transition-transform inline-block">
-        {icon}
-      </div>
-      <h4 className="text-base font-semibold text-white mb-1">{title}</h4>
-      <p className="text-slate-400 text-xs">{description}</p>
-    </button>
-  );
-}
+function ProjectRow({ project }) {
+  const getStatusColor = (status) => {
+    switch(status) {
+      case 'completed': return 'text-emerald-400';
+      case 'building': return 'text-blue-400';
+      case 'failed': return 'text-red-400';
+      default: return 'text-slate-400';
+    }
+  };
 
-function ActivityItem({ icon, title, time, status }) {
   return (
     <div className="flex items-center gap-3 p-3 bg-slate-800/20 rounded-lg hover:bg-slate-800/40 transition-colors">
       <div className="p-2 bg-slate-700/30 rounded-lg">
-        {icon}
+        <Folder className="w-4 h-4 text-slate-400" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-white font-medium text-sm truncate">{title}</p>
-        <p className="text-slate-500 text-xs">{time}</p>
+        <p className="text-white font-medium text-sm truncate">{project.name}</p>
+        <p className="text-slate-500 text-xs">{new Date(project.createdAt).toLocaleDateString()}</p>
       </div>
-      <span className="text-xs font-medium text-emerald-400 uppercase">
-        {status}
+      <span className={`text-xs font-medium uppercase ${getStatusColor(project.status)}`}>
+        {project.status}
       </span>
     </div>
   );
 }
 
-function InsightRow({ label, value, trend, positive }) {
+function ProjectCard({ project, onDelete }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-slate-400 text-sm">{label}</span>
-      <div className="flex items-center gap-2">
-        <span className="text-white font-semibold">{value}</span>
-        <span className={`text-xs font-medium ${positive ? 'text-emerald-400' : 'text-orange-400'}`}>
-          {trend}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function UsageBar({ label, used, total, color }) {
-  const percentage = (used / total) * 100;
-  const colors = {
-    blue: 'bg-blue-500',
-    purple: 'bg-purple-500',
-    emerald: 'bg-emerald-500'
-  };
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-slate-400 text-sm">{label}</span>
-        <span className="text-slate-300 text-xs font-medium">{used} / {total}</span>
-      </div>
-      <div className="w-full bg-slate-700 rounded-full h-2">
-        <div 
-          className={`h-full ${colors[color]} rounded-full transition-all`}
-          style={{ width: `${Math.min(percentage, 100)}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ProjectCard({ project, onSelect }) {
-  return (
-    <div 
-      onClick={onSelect}
-      className="group bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-5 hover:bg-slate-800/50 hover:border-slate-600 transition-all cursor-pointer"
-    >
+    <div className="group bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-5 hover:bg-slate-800/50 hover:border-slate-600 transition-all">
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-semibold text-white mb-1 group-hover:text-purple-400 transition-colors truncate">
@@ -548,38 +515,51 @@ function ProjectCard({ project, onSelect }) {
           </h3>
           <p className="text-slate-500 text-xs flex items-center gap-1">
             <Calendar className="w-3 h-3" />
-            {new Date(project.created_at).toLocaleDateString()}
+            {new Date(project.createdAt).toLocaleDateString()}
           </p>
         </div>
-        <div className="px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded-lg">
-          <span className="text-emerald-400 text-xs font-semibold">READY</span>
+        <div className={`px-2.5 py-1 rounded-lg ${
+          project.status === 'completed' ? 'bg-emerald-500/20 border border-emerald-500/30' :
+          project.status === 'building' ? 'bg-blue-500/20 border border-blue-500/30' :
+          'bg-red-500/20 border border-red-500/30'
+        }`}>
+          <span className={`text-xs font-semibold ${
+            project.status === 'completed' ? 'text-emerald-400' :
+            project.status === 'building' ? 'text-blue-400' :
+            'text-red-400'
+          }`}>
+            {project.status.toUpperCase()}
+          </span>
         </div>
       </div>
 
       <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
         <div className="flex items-center gap-1">
           <Globe className="w-3.5 h-3.5" />
-          <span>React</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <Layers className="w-3.5 h-3.5" />
-          <span>Node.js</span>
+          <span>{project.framework || 'React'}</span>
         </div>
         <div className="flex items-center gap-1">
           <Database className="w-3.5 h-3.5" />
-          <span>PostgreSQL</span>
+          <span>{project.database || 'PostgreSQL'}</span>
         </div>
       </div>
 
       <div className="flex gap-2">
-        <button className="flex-1 px-3 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-medium rounded-lg text-xs flex items-center justify-center gap-1.5 transition-all">
-          <Eye className="w-3.5 h-3.5" />
-          View
-        </button>
-        <button className="px-3 py-2 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-all">
-          <Download className="w-3.5 h-3.5" />
-        </button>
-        <button className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-all">
+        {project.status === 'completed' && (
+          <>
+            <button className="flex-1 px-3 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-medium rounded-lg text-xs flex items-center justify-center gap-1.5 transition-all">
+              <Eye className="w-3.5 h-3.5" />
+              View
+            </button>
+            <button className="px-3 py-2 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-all">
+              <Download className="w-3.5 h-3.5" />
+            </button>
+          </>
+        )}
+        <button 
+          onClick={() => onDelete(project.id)}
+          className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-all"
+        >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -587,40 +567,23 @@ function ProjectCard({ project, onSelect }) {
   );
 }
 
-function ActivityTimeline({ projects }) {
+function StatRow({ label, value, valueColor }) {
   return (
-    <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
-      <h3 className="text-lg font-semibold text-white mb-6">Activity Timeline</h3>
-      <div className="space-y-5">
-        {projects.length > 0 ? (
-          projects.map((project, i) => (
-            <div key={i} className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-                  <CheckCircle className="w-4 h-4 text-white" />
-                </div>
-                {i !== projects.length - 1 && (
-                  <div className="w-0.5 h-full bg-gradient-to-b from-blue-500 to-purple-600 mt-2"></div>
-                )}
-              </div>
-              <div className="flex-1 pb-5">
-                <h4 className="text-white font-medium text-sm mb-1">{project.name} Completed</h4>
-                <p className="text-slate-500 text-xs mb-2 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {new Date(project.created_at).toLocaleDateString()}
-                </p>
-                <div className="bg-slate-800/30 rounded-lg p-3">
-                  <p className="text-slate-400 text-xs">
-                    Successfully built and ready for deployment
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <p className="text-slate-400 text-center py-6 text-sm">No activity yet</p>
-        )}
+    <div className="flex items-center justify-between">
+      <span className="text-slate-400 text-sm">{label}</span>
+      <span className={`font-semibold ${valueColor || 'text-white'}`}>{value}</span>
+    </div>
+  );
+}
+
+function MetricBox({ label, value, icon, color }) {
+  return (
+    <div className="text-center p-6 bg-slate-800/20 rounded-xl">
+      <div className={`inline-flex p-3 bg-gradient-to-br ${color} rounded-xl mb-3`}>
+        {icon}
       </div>
+      <div className="text-3xl font-bold text-white mb-1">{value}</div>
+      <div className="text-sm text-slate-400">{label}</div>
     </div>
   );
 }

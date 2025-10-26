@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Rocket, Menu, X, Sparkles, Crown, Bell, Settings, LogOut, User, ChevronDown } from 'lucide-react';
+import axios from 'axios';
 import BuilderInterface from './components/BuilderInterface';
 import BuildingProgress from './components/BuildingProgress';
 import AppPreview from './components/AppPreview';
@@ -8,6 +9,11 @@ import LoginModal from './components/Auth/LoginModal';
 import OAuthCallback from './components/Auth/OAuthCallback';
 import PricingModal from './components/Payment/PricingModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import { getApiUrl } from './config/api';
+
+// Configure axios defaults
+axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+axios.defaults.timeout = 30000;
 
 function App() {
   const [view, setView] = useState('landing');
@@ -20,8 +26,9 @@ function App() {
   const [buildData, setBuildData] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [isOAuthCallback, setIsOAuthCallback] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Check if current URL is OAuth callback
+  // Check if OAuth callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('token') || window.location.pathname === '/auth/callback') {
@@ -29,34 +36,55 @@ function App() {
     }
   }, []);
 
-  // Check if user is logged in on mount
+  // Load user from token on mount
   useEffect(() => {
-    // Don't auto-login if we're in OAuth callback
     if (isOAuthCallback) return;
-
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
     
-    if (token && savedUser) {
-      try {
-        const parsedUser = JSON.parse(savedUser);
-        setUser(parsedUser);
-        setView('dashboard');
-      } catch (e) {
-        console.error('Failed to parse saved user:', e);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-      }
-    }
-
-    // Simulated notifications
-    if (user) {
-      setNotifications([
-        { id: 1, message: 'Your app is ready to deploy!', unread: true },
-        { id: 2, message: 'New AI features available', unread: true }
-      ]);
+    const token = localStorage.getItem('token');
+    if (token) {
+      // Set axios auth header
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      loadUserFromAPI();
+    } else {
+      setLoading(false);
     }
   }, [isOAuthCallback]);
+
+  // Load user data from API
+  const loadUserFromAPI = async () => {
+    try {
+      const response = await axios.get('/api/auth/me');
+      if (response.data) {
+        setUser(response.data);
+        setView('dashboard');
+        
+        // Load notifications
+        loadNotifications(response.data.id);
+      }
+    } catch (error) {
+      console.error('Failed to load user:', error);
+      // Invalid token, clear it
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      delete axios.defaults.headers.common['Authorization'];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load notifications from API
+  const loadNotifications = async (userId) => {
+    try {
+      const response = await axios.get('/api/notifications', {
+        params: { unread: true, limit: 5 }
+      });
+      if (response.data?.notifications) {
+        setNotifications(response.data.notifications);
+      }
+    } catch (error) {
+      console.error('Failed to load notifications:', error);
+    }
+  };
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -72,11 +100,18 @@ function App() {
   }, [showUserMenu, showMobileMenu]);
 
   // Handle OAuth callback success
-  const handleOAuthSuccess = (userData) => {
+  const handleOAuthSuccess = async (userData) => {
     console.log('OAuth success:', userData);
-    setUser(userData);
+    
+    // Set axios auth header
+    const token = localStorage.getItem('token');
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    }
+    
+    // Load full user data from API
+    await loadUserFromAPI();
     setIsOAuthCallback(false);
-    setView('dashboard');
   };
 
   // Handle OAuth callback error
@@ -87,20 +122,35 @@ function App() {
     setShowLoginModal(true);
   };
 
-  const handleLoginSuccess = (userData) => {
-    setUser(userData);
-    setView('dashboard');
+  const handleLoginSuccess = async (userData) => {
+    // Set axios auth header
+    const token = localStorage.getItem('token');
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    }
+    
+    // Load full user data from API
+    await loadUserFromAPI();
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // Call logout API
+      await axios.post('/api/auth/logout');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+    
+    // Clear local storage and state
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    delete axios.defaults.headers.common['Authorization'];
     setUser(null);
     setView('landing');
     setShowUserMenu(false);
   };
 
-  const handleStartBuilding = (prompt) => {
+  const handleStartBuilding = async (prompt) => {
     if (!user) {
       setShowLoginModal(true);
       return;
@@ -111,25 +161,36 @@ function App() {
       return;
     }
 
+    // Use credit via API
+    try {
+      await axios.post('/api/auth/use-credit');
+      // Reload user data to get updated credits
+      await loadUserFromAPI();
+    } catch (error) {
+      console.error('Failed to use credit:', error);
+      if (error.response?.status === 403) {
+        setShowPricingModal(true);
+        return;
+      }
+    }
+
     setUserPrompt(prompt);
     setView('building');
   };
 
-  const handleBuildComplete = (data) => {
+  const handleBuildComplete = async (data) => {
     setBuildData(data);
     setView('preview');
     
+    // Reload user data to reflect any changes
     if (user) {
-      const updatedUser = { ...user, credits: user.credits - 1 };
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      await loadUserFromAPI();
     }
   };
 
-  const handleUpgradeSuccess = (newTier) => {
-    const updatedUser = { ...user, tier: newTier };
-    setUser(updatedUser);
-    localStorage.setItem('user', JSON.stringify(updatedUser));
+  const handleUpgradeSuccess = async (newTier) => {
+    // Reload user data from API to get updated tier and credits
+    await loadUserFromAPI();
   };
 
   const getTierConfig = (tier) => {
@@ -158,6 +219,18 @@ function App() {
 
   const tierConfig = user ? getTierConfig(user.tier) : getTierConfig('free');
   const TierIcon = tierConfig.icon;
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
+          <p className="text-white text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Show OAuth callback handler
   if (isOAuthCallback) {
@@ -251,11 +324,14 @@ function App() {
                       </div>
 
                       {/* Notifications */}
-                      <button className="relative p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors">
+                      <button 
+                        onClick={() => setView('dashboard')}
+                        className="relative p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors"
+                      >
                         <Bell className="w-5 h-5 text-white" />
-                        {notifications.filter(n => n.unread).length > 0 && (
+                        {notifications.length > 0 && (
                           <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                            {notifications.filter(n => n.unread).length}
+                            {notifications.length}
                           </span>
                         )}
                       </button>
