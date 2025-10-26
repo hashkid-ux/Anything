@@ -5,6 +5,7 @@ import BuildingProgress from './components/BuildingProgress';
 import AppPreview from './components/AppPreview';
 import Dashboard from './components/Dashboard/Dashboard';
 import LoginModal from './components/Auth/LoginModal';
+import OAuthCallback from './components/Auth/OAuthCallback';
 import PricingModal from './components/Payment/PricingModal';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -18,15 +19,34 @@ function App() {
   const [userPrompt, setUserPrompt] = useState('');
   const [buildData, setBuildData] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [isOAuthCallback, setIsOAuthCallback] = useState(false);
+
+  // Check if current URL is OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('token') || window.location.pathname === '/auth/callback') {
+      setIsOAuthCallback(true);
+    }
+  }, []);
 
   // Check if user is logged in on mount
   useEffect(() => {
+    // Don't auto-login if we're in OAuth callback
+    if (isOAuthCallback) return;
+
     const token = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
     
     if (token && savedUser) {
-      setUser(JSON.parse(savedUser));
-      setView('dashboard');
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
+        setView('dashboard');
+      } catch (e) {
+        console.error('Failed to parse saved user:', e);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
     }
 
     // Simulated notifications
@@ -36,7 +56,7 @@ function App() {
         { id: 2, message: 'New AI features available', unread: true }
       ]);
     }
-  }, []);
+  }, [isOAuthCallback]);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -50,6 +70,22 @@ function App() {
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [showUserMenu, showMobileMenu]);
+
+  // Handle OAuth callback success
+  const handleOAuthSuccess = (userData) => {
+    console.log('OAuth success:', userData);
+    setUser(userData);
+    setIsOAuthCallback(false);
+    setView('dashboard');
+  };
+
+  // Handle OAuth callback error
+  const handleOAuthError = (error) => {
+    console.error('OAuth error:', error);
+    setIsOAuthCallback(false);
+    setView('landing');
+    setShowLoginModal(true);
+  };
 
   const handleLoginSuccess = (userData) => {
     setUser(userData);
@@ -122,6 +158,18 @@ function App() {
 
   const tierConfig = user ? getTierConfig(user.tier) : getTierConfig('free');
   const TierIcon = tierConfig.icon;
+
+  // Show OAuth callback handler
+  if (isOAuthCallback) {
+    return (
+      <ErrorBoundary>
+        <OAuthCallback 
+          onSuccess={handleOAuthSuccess}
+          onError={handleOAuthError}
+        />
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>
@@ -212,7 +260,7 @@ function App() {
                         )}
                       </button>
 
-                      {/* User Menu */}
+                      {/* User Avatar & Menu */}
                       <div className="relative">
                         <button
                           onClick={(e) => {
@@ -221,9 +269,17 @@ function App() {
                           }}
                           className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 pl-3 pr-2 py-2 rounded-xl transition-all group"
                         >
-                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                            <User className="w-4 h-4 text-white" />
-                          </div>
+                          {user.avatar ? (
+                            <img 
+                              src={user.avatar} 
+                              alt={user.name}
+                              className="w-8 h-8 rounded-lg object-cover"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                              <User className="w-4 h-4 text-white" />
+                            </div>
+                          )}
                           <span className="hidden md:block text-white font-semibold text-sm max-w-[100px] truncate">
                             {user.name}
                           </span>
@@ -239,12 +295,23 @@ function App() {
                             {/* User Info */}
                             <div className="p-4 border-b border-white/10">
                               <div className="flex items-center gap-3 mb-3">
-                                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                                  <User className="w-6 h-6 text-white" />
-                                </div>
+                                {user.avatar ? (
+                                  <img 
+                                    src={user.avatar} 
+                                    alt={user.name}
+                                    className="w-12 h-12 rounded-xl object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                                    <User className="w-6 h-6 text-white" />
+                                  </div>
+                                )}
                                 <div className="flex-1 min-w-0">
                                   <p className="text-white font-bold truncate">{user.name}</p>
                                   <p className="text-gray-400 text-xs truncate">{user.email}</p>
+                                  {user.provider && (
+                                    <p className="text-gray-500 text-xs mt-1">via {user.provider}</p>
+                                  )}
                                 </div>
                               </div>
                               <div className={`inline-flex items-center gap-2 bg-gradient-to-r ${tierConfig.color} px-3 py-1.5 rounded-lg text-sm`}>
