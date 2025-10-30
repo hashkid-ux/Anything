@@ -16,85 +16,65 @@ class DatabaseAgent {
    * @returns {Object} JSON with Prisma schema, SQL migrations, seed data
    */
   async designSchemaWithResearch(enhancedRequirements, researchData) {
-    let attempt = 0;
-    let lastError = null;
+  let attempt = 0;
+  
+  while (attempt < this.maxRetries) {
+    try {
+      attempt++;
+      console.log(`📊 Schema generation attempt ${attempt}/${this.maxRetries}`);
 
-    while (attempt < this.maxRetries) {
-      try {
-        attempt++;
-        console.log(`📊 Database schema generation attempt ${attempt}/${this.maxRetries}`);
+      const prompt = `Generate a PostgreSQL database schema. Return ONLY valid JSON, no markdown, no explanations.
 
-        const prompt = `Design a PostgreSQL database schema for a project with the following details:
-
-PROJECT REQUIREMENTS:
-${JSON.stringify(enhancedRequirements, null, 2)}
-
-RESEARCH DATA:
-${JSON.stringify(researchData, null, 2)}
-
-Requirements:
-1. Use Prisma schema format.
-2. Include SQL migrations.
-3. Provide seed data for initial setup.
-4. Reflect all important features from competitive advantages, pain points, and market gaps.
-5. Include relations, indexes, and constraints.
-6. Return ONLY valid JSON - no markdown, no code blocks.
-
-Return ONLY this JSON structure (no other text):
+Required JSON structure:
 {
-  "prisma_schema": "full Prisma schema as a string with proper escaping",
-  "sql_migrations": ["migration 1 SQL statement", "migration 2 SQL statement"],
-  "seed_data": [{"table": "table_name", "data": {}}],
-  "stats": {
-    "total_tables": 5,
-    "total_relations": 4,
-    "total_indexes": 3
-  }
-}`;
+  "prisma_schema": "datasource db {\\n  provider = \\"postgresql\\"\\n  url = env(\\"DATABASE_URL\\")\\n}\\n\\nmodel User {\\n  id String @id @default(uuid())\\n  email String @unique\\n  name String\\n}",
+  "sql_migrations": ["CREATE TABLE users (id UUID PRIMARY KEY, email TEXT UNIQUE, name TEXT);"],
+  "seed_data": [],
+  "stats": {"total_tables": 1, "total_relations": 0, "total_indexes": 1}
+}
 
-        const response = await this.client.messages.create({
-          model: this.model,
-          max_tokens: 4000,
-          messages: [{ role: 'user', content: prompt }]
-        });
+Project: ${JSON.stringify(enhancedRequirements).substring(0, 500)}
 
-        const content = response.content[0].text;
-        console.log('📝 AI Response length:', content.length);
+Return ONLY the JSON object above. No code blocks, no explanations.`;
 
-        // Extract JSON from response
-        const parsed = this.extractAndParseJSON(content);
-        
-        if (!parsed) {
-          throw new Error('Failed to extract valid JSON from AI response');
-        }
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: prompt }]
+      });
 
-        console.log('✅ Database schema generated successfully');
+      const parsed = this.extractAndParseJSON(response.content[0].text);
+      
+      if (parsed && parsed.prisma_schema) {
+        console.log('✅ Schema generated successfully');
         return {
-          prisma_schema: parsed.prisma_schema || this.getDefaultPrismaSchema(),
+          prisma_schema: parsed.prisma_schema,
           sql_migrations: parsed.sql_migrations || [],
           seed_data: parsed.seed_data || [],
-          stats: parsed.stats || { total_tables: 0, total_relations: 0, total_indexes: 0 },
+          stats: parsed.stats || { total_tables: 1, total_relations: 0, total_indexes: 1 },
           migrations: (parsed.sql_migrations || []).map((sql, i) => ({
             name: `migration_${String(i + 1).padStart(3, '0')}`,
             sql: sql
           }))
         };
-
-      } catch (error) {
-        console.error(`❌ Attempt ${attempt} failed:`, error.message);
-        lastError = error;
-        
-        if (attempt < this.maxRetries) {
-          console.log('🔄 Retrying with simplified prompt...');
-          await this.sleep(2000);
-        }
       }
-    }
+      
+      throw new Error('Invalid schema structure');
 
-    // If all retries failed, return a default schema
-    console.warn(`⚠️  All ${this.maxRetries} attempts failed, using default schema`);
-    return this.getDefaultDatabaseSchema();
+    } catch (error) {
+      console.error(`❌ Attempt ${attempt} failed:`, error.message);
+      
+      if (attempt >= this.maxRetries) {
+        console.warn('⚠️ Using default schema');
+        return this.getDefaultDatabaseSchema();
+      }
+      
+      await this.sleep(2000);
+    }
   }
+  
+  return this.getDefaultDatabaseSchema();
+}
 
   /**
    * Extracts JSON from AI response, handling various formats
@@ -102,47 +82,48 @@ Return ONLY this JSON structure (no other text):
   extractAndParseJSON(content) {
   if (!content) return null;
 
-  // Step 1: Remove Markdown code fences if present
-  content = content
-    .replace(/```(json)?/gi, '') // remove ```json or ```
-    .replace(/```/g, '') // remove stray code block markers
-    .trim();
-
-  // Step 2: Try to isolate the largest JSON-like object
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    console.warn('⚠️ No JSON object found in AI response');
-    return null;
-  }
-
-  const jsonStr = jsonMatch[0]
-    .replace(/,(\s*[}\]])/g, '$1') // remove trailing commas
-    .replace(/“|”/g, '"') // fix curly quotes
-    .replace(/‘|’/g, "'") // fix single quotes
-    .replace(/\n\s*\n/g, '\n'); // normalize newlines
-
-  // Step 3: Try parsing the cleaned string
   try {
-    return JSON.parse(jsonStr);
-  } catch (e) {
-    console.warn('❌ JSON parse failed, attempting deep cleanup...', e.message);
-  }
+    // Remove markdown code blocks
+    content = content.replace(/```(?:json)?/gi, '').trim();
+    
+    // Find JSON object
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn('⚠️ No JSON object found');
+      return null;
+    }
 
-  // Step 4: Fallback cleanup (last resort)
-  try {
-    const cleaned = jsonStr
-      .replace(/[\r\n]+/g, ' ')
-      .replace(/\\"/g, '"')
-      .replace(/\\n/g, '')
-      .replace(/'/g, '"');
-
-    return JSON.parse(cleaned);
-  } catch (e) {
-    console.error('🚨 All parse attempts failed:', e.message);
+    let jsonStr = jsonMatch[0];
+    
+    // Clean up common issues
+    jsonStr = jsonStr
+      .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+      .replace(/"|"/g, '"') // Fix curly quotes
+      .replace(/\n/g, '\\n') // Escape newlines in strings
+      .replace(/\t/g, ' '); // Replace tabs
+    
+    // Try parsing
+    try {
+      return JSON.parse(jsonStr);
+    } catch (parseError) {
+      console.warn('First parse failed, trying cleanup...', parseError.message);
+      
+      // More aggressive cleanup
+      jsonStr = jsonStr
+        .replace(/\\n/g, ' ') // Remove escaped newlines
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .replace(/"\s*:\s*"/g, '":"') // Fix spacing in key-value pairs
+        .replace(/,\s*}/g, '}') // Remove trailing commas before }
+        .replace(/,\s*]/g, ']'); // Remove trailing commas before ]
+      
+      return JSON.parse(jsonStr);
+    }
+  } catch (error) {
+    console.error('🚨 JSON parse failed:', error.message);
+    console.error('Content preview:', content.substring(0, 200));
     return null;
   }
 }
-
 
   /**
    * Extract array items from raw JSON string

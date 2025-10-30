@@ -12,9 +12,8 @@ import NotificationPanel from './components/Notifications/NotificationPanel';
 import SettingsModal from './components/Settings/SettingsModal';
 import ProfileModal from './components/Profile/ProfileModal';
 import ErrorBoundary from './components/ErrorBoundary';
-import { getApiUrl } from './config/api';
 
-// Configure axios defaults
+// Configure axios
 axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 axios.defaults.timeout = 30000;
 
@@ -34,7 +33,7 @@ function App() {
   const [isOAuthCallback, setIsOAuthCallback] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Check if OAuth callback
+  // Check OAuth callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('token') || window.location.pathname === '/auth/callback') {
@@ -42,13 +41,12 @@ function App() {
     }
   }, []);
 
-  // Load user from token on mount
+  // Load user on mount
   useEffect(() => {
     if (isOAuthCallback) return;
     
     const token = localStorage.getItem('token');
     if (token) {
-      // Set axios auth header
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       loadUserFromAPI();
     } else {
@@ -56,20 +54,27 @@ function App() {
     }
   }, [isOAuthCallback]);
 
-  // Load user data from API
+  // Listen for preview event from Dashboard
+  useEffect(() => {
+    const handleShowPreview = (event) => {
+      setBuildData(event.detail);
+      setView('preview');
+    };
+
+    window.addEventListener('showPreview', handleShowPreview);
+    return () => window.removeEventListener('showPreview', handleShowPreview);
+  }, []);
+
   const loadUserFromAPI = async () => {
     try {
       const response = await axios.get('/api/auth/me');
       if (response.data) {
         setUser(response.data);
         setView('dashboard');
-        
-        // Load notifications
         loadNotifications(response.data.id);
       }
     } catch (error) {
       console.error('Failed to load user:', error);
-      // Invalid token, clear it
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       delete axios.defaults.headers.common['Authorization'];
@@ -78,7 +83,6 @@ function App() {
     }
   };
 
-  // Load notifications from API
   const loadNotifications = async (userId) => {
     try {
       const response = await axios.get('/api/notifications', {
@@ -92,35 +96,15 @@ function App() {
     }
   };
 
-  // Close menus when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => {
-      setShowUserMenu(false);
-      setShowMobileMenu(false);
-    };
-
-    if (showUserMenu || showMobileMenu) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
-  }, [showUserMenu, showMobileMenu]);
-
-  // Handle OAuth callback success
   const handleOAuthSuccess = async (userData) => {
-    console.log('OAuth success:', userData);
-    
-    // Set axios auth header
     const token = localStorage.getItem('token');
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     }
-    
-    // Load full user data from API
     await loadUserFromAPI();
     setIsOAuthCallback(false);
   };
 
-  // Handle OAuth callback error
   const handleOAuthError = (error) => {
     console.error('OAuth error:', error);
     setIsOAuthCallback(false);
@@ -129,25 +113,20 @@ function App() {
   };
 
   const handleLoginSuccess = async (userData) => {
-    // Set axios auth header
     const token = localStorage.getItem('token');
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     }
-    
-    // Load full user data from API
     await loadUserFromAPI();
   };
 
   const handleLogout = async () => {
     try {
-      // Call logout API
       await axios.post('/api/auth/logout');
     } catch (error) {
       console.error('Logout error:', error);
     }
     
-    // Clear local storage and state
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     delete axios.defaults.headers.common['Authorization'];
@@ -167,10 +146,9 @@ function App() {
       return;
     }
 
-    // Use credit via API
+    // Use credit
     try {
       await axios.post('/api/auth/use-credit');
-      // Reload user data to get updated credits
       await loadUserFromAPI();
     } catch (error) {
       console.error('Failed to use credit:', error);
@@ -185,18 +163,23 @@ function App() {
   };
 
   const handleBuildComplete = async (data) => {
+    console.log('Build complete:', data);
     setBuildData(data);
     setView('preview');
     
-    // Reload user data to reflect any changes
     if (user) {
       await loadUserFromAPI();
     }
   };
 
-  const handleUpgradeSuccess = async (newTier) => {
-    // Reload user data from API to get updated tier and credits
-    await loadUserFromAPI();
+  const handleRetryBuild = () => {
+    setView('building');
+  };
+
+  const handleBackToDashboard = () => {
+    setView('dashboard');
+    setBuildData(null);
+    setUserPrompt('');
   };
 
   const getTierConfig = (tier) => {
@@ -226,7 +209,6 @@ function App() {
   const tierConfig = user ? getTierConfig(user.tier) : getTierConfig('free');
   const TierIcon = tierConfig.icon;
 
-  // Show loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
@@ -238,7 +220,6 @@ function App() {
     );
   }
 
-  // Show OAuth callback handler
   if (isOAuthCallback) {
     return (
       <ErrorBoundary>
@@ -253,7 +234,7 @@ function App() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative">
-        {/* Global Navigation Header */}
+        {/* Global Navigation - Hide during building */}
         {view !== 'building' && (
           <header className="sticky top-0 z-50 border-b border-white/10 backdrop-blur-xl bg-black/20">
             <div className="max-w-7xl mx-auto px-4 py-4">
@@ -277,7 +258,7 @@ function App() {
                   </div>
                 </button>
 
-                {/* Desktop Navigation */}
+                {/* Desktop Nav */}
                 {user && (
                   <nav className="hidden lg:flex items-center gap-6">
                     <NavLink 
@@ -298,19 +279,8 @@ function App() {
                   </nav>
                 )}
 
-                {/* Right Side Actions */}
+                {/* Right Side */}
                 <div className="flex items-center gap-4">
-                  {/* Live Stats (when not logged in) */}
-                  {!user && (
-                    <div className="hidden md:flex items-center gap-4 text-sm text-gray-400">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                        <span>2,847 apps today</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* User Section */}
                   {user ? (
                     <div className="flex items-center gap-3">
                       {/* Tier Badge */}
@@ -342,7 +312,7 @@ function App() {
                         )}
                       </button>
 
-                      {/* User Avatar & Menu */}
+                      {/* User Menu */}
                       <div className="relative">
                         <button
                           onClick={(e) => {
@@ -368,72 +338,32 @@ function App() {
                           <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showUserMenu ? 'rotate-180' : ''}`} />
                         </button>
 
-                        {/* Dropdown Menu */}
+                        {/* Dropdown */}
                         {showUserMenu && (
                           <div 
-                            className="absolute right-0 mt-2 w-64 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden animate-slide-down"
+                            className="absolute right-0 mt-2 w-64 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {/* User Info */}
-                            <div className="p-4 border-b border-white/10">
-                              <div className="flex items-center gap-3 mb-3">
-                                {user.avatar ? (
-                                  <img 
-                                    src={user.avatar} 
-                                    alt={user.name}
-                                    className="w-12 h-12 rounded-xl object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                                    <User className="w-6 h-6 text-white" />
-                                  </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-white font-bold truncate">{user.name}</p>
-                                  <p className="text-gray-400 text-xs truncate">{user.email}</p>
-                                  {user.provider && (
-                                    <p className="text-gray-500 text-xs mt-1">via {user.provider}</p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className={`inline-flex items-center gap-2 bg-gradient-to-r ${tierConfig.color} px-3 py-1.5 rounded-lg text-sm`}>
-                                <TierIcon className="w-3 h-3 text-white" />
-                                <span className="text-white font-bold">{tierConfig.label}</span>
-                                <span className="text-white/70">•</span>
-                                <span className="text-white font-semibold">{user.credits} credits</span>
-                              </div>
-                            </div>
-
-                            {/* Menu Items */}
                             <div className="p-2">
                               <UserMenuItem 
-                                icon={<User className="w-4 h-4" />}
-                                label="My Profile"
-                                onClick={() => {
-                                  setShowUserMenu(false);
-                                  setShowProfileModal(true);
-                                }}
+                                icon={<User />}
+                                label="Profile"
+                                onClick={() => { setShowUserMenu(false); setShowProfileModal(true); }}
                               />
                               <UserMenuItem 
-                                icon={<Settings className="w-4 h-4" />}
+                                icon={<Settings />}
                                 label="Settings"
-                                onClick={() => {
-                                  setShowUserMenu(false);
-                                  setShowSettingsModal(true);
-                                }}
+                                onClick={() => { setShowUserMenu(false); setShowSettingsModal(true); }}
                               />
                               <UserMenuItem 
-                                icon={<Crown className="w-4 h-4" />}
-                                label="Upgrade Plan"
-                                onClick={() => {
-                                  setShowUserMenu(false);
-                                  setShowPricingModal(true);
-                                }}
+                                icon={<Crown />}
+                                label="Upgrade"
+                                onClick={() => { setShowUserMenu(false); setShowPricingModal(true); }}
                                 highlight
                               />
                               <div className="h-px bg-white/10 my-2"></div>
                               <UserMenuItem 
-                                icon={<LogOut className="w-4 h-4" />}
+                                icon={<LogOut />}
                                 label="Logout"
                                 onClick={handleLogout}
                                 danger
@@ -442,34 +372,18 @@ function App() {
                           </div>
                         )}
                       </div>
-
-                      {/* Mobile Menu Toggle */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowMobileMenu(!showMobileMenu);
-                        }}
-                        className="lg:hidden p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors"
-                      >
-                        {showMobileMenu ? (
-                          <X className="w-6 h-6 text-white" />
-                        ) : (
-                          <Menu className="w-6 h-6 text-white" />
-                        )}
-                      </button>
                     </div>
                   ) : (
-                    // Not logged in
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => setShowLoginModal(true)}
-                        className="hidden sm:block px-6 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/30 text-white font-semibold rounded-xl transition-all"
+                        className="hidden sm:block px-6 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold rounded-xl transition-all"
                       >
                         Sign In
                       </button>
                       <button
                         onClick={() => setShowLoginModal(true)}
-                        className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold rounded-xl transition-all hover:scale-105 shadow-lg hover:shadow-purple-500/50"
+                        className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold rounded-xl transition-all hover:scale-105"
                       >
                         Get Started Free
                       </button>
@@ -477,33 +391,16 @@ function App() {
                   )}
                 </div>
               </div>
-
-              {/* Mobile Menu */}
-              {showMobileMenu && user && (
-                <div className="lg:hidden mt-4 py-4 border-t border-white/10 space-y-2 animate-slide-down">
-                  <MobileNavLink onClick={() => { setView('dashboard'); setShowMobileMenu(false); }}>
-                    Dashboard
-                  </MobileNavLink>
-                  <MobileNavLink onClick={() => { setView('builder'); setShowMobileMenu(false); }}>
-                    Build New App
-                  </MobileNavLink>
-                  <MobileNavLink onClick={() => { setShowPricingModal(true); setShowMobileMenu(false); }}>
-                    Upgrade Plan
-                  </MobileNavLink>
-                </div>
-              )}
             </div>
           </header>
         )}
 
-        {/* Main Content Area */}
+        {/* Main Content */}
         <main className="relative">
-          {/* Landing/Builder Interface */}
           {view === 'landing' && (
             <BuilderInterface onStartBuilding={handleStartBuilding} />
           )}
 
-          {/* Dashboard */}
           {view === 'dashboard' && user && (
             <Dashboard
               user={user}
@@ -513,28 +410,22 @@ function App() {
             />
           )}
 
-          {/* Builder (when logged in) */}
           {view === 'builder' && user && (
             <BuilderInterface onStartBuilding={handleStartBuilding} />
           )}
 
-          {/* Building Progress */}
           {view === 'building' && (
             <BuildingProgress 
               prompt={userPrompt} 
               onComplete={handleBuildComplete}
+              onRetry={handleRetryBuild}
             />
           )}
 
-          {/* Preview Results */}
           {view === 'preview' && buildData && (
             <AppPreview 
               data={buildData}
-              onStartNew={() => {
-                setView('dashboard');
-                setUserPrompt('');
-                setBuildData(null);
-              }}
+              onStartNew={handleBackToDashboard}
             />
           )}
         </main>
@@ -550,7 +441,7 @@ function App() {
           isOpen={showPricingModal}
           onClose={() => setShowPricingModal(false)}
           currentTier={user?.tier || 'free'}
-          onUpgradeSuccess={handleUpgradeSuccess}
+          onUpgradeSuccess={loadUserFromAPI}
         />
 
         <NotificationPanel
@@ -563,7 +454,7 @@ function App() {
           isOpen={showSettingsModal}
           onClose={() => setShowSettingsModal(false)}
           user={user}
-          onUpdate={handleLoginSuccess}
+          onUpdate={loadUserFromAPI}
         />
 
         <ProfileModal
@@ -571,46 +462,17 @@ function App() {
           onClose={() => setShowProfileModal(false)}
           user={user}
         />
-
-        {/* Floating Action Button (Mobile - when logged in) */}
-        {user && view === 'dashboard' && (
-          <button
-            onClick={() => setView('builder')}
-            className="lg:hidden fixed bottom-6 right-6 w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full shadow-2xl hover:shadow-purple-500/50 flex items-center justify-center transition-all hover:scale-110 active:scale-95 z-40"
-          >
-            <Rocket className="w-8 h-8" />
-          </button>
-        )}
       </div>
-
-      <style jsx>{`
-        @keyframes slide-down {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-slide-down {
-          animation: slide-down 0.2s ease-out;
-        }
-      `}</style>
     </ErrorBoundary>
   );
 }
 
-// Navigation Link Component
 function NavLink({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
       className={`relative px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-        active 
-          ? 'text-white' 
-          : 'text-gray-400 hover:text-white'
+        active ? 'text-white' : 'text-gray-400 hover:text-white'
       }`}
     >
       {children}
@@ -621,19 +483,6 @@ function NavLink({ active, onClick, children }) {
   );
 }
 
-// Mobile Navigation Link
-function MobileNavLink({ onClick, children }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full text-left px-4 py-3 text-white font-semibold rounded-xl hover:bg-white/10 transition-colors"
-    >
-      {children}
-    </button>
-  );
-}
-
-// User Menu Item Component
 function UserMenuItem({ icon, label, onClick, highlight, danger }) {
   return (
     <button
@@ -646,7 +495,7 @@ function UserMenuItem({ icon, label, onClick, highlight, danger }) {
           : 'text-gray-300 hover:bg-white/10 hover:text-white'
       }`}
     >
-      {icon}
+      {React.cloneElement(icon, { className: 'w-4 h-4' })}
       <span>{label}</span>
     </button>
   );
