@@ -1,5 +1,8 @@
+// frontend/src/components/AppPreview.js
+// FULLY FIXED - Production Ready with Environment Variables
+
 import React, { useState, useEffect } from 'react';
-import { Download, Share2, Code, CheckCircle, ArrowRight, Zap, Award, BarChart3, Rocket, Globe, Database, Layers, FileCode, X } from 'lucide-react';
+import { Download, Share2, Code, CheckCircle, ArrowRight, Zap, Award, BarChart3, Rocket, Globe, Database, Layers, FileCode, X, ExternalLink } from 'lucide-react';
 import axios from 'axios';
 
 function AppPreview({ data, onStartNew }) {
@@ -7,30 +10,55 @@ function AppPreview({ data, onStartNew }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedCodeFile, setSelectedCodeFile] = useState('App.jsx');
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+  // CRITICAL FIX: Use environment variable with fallback
+  const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
+
+  useEffect(() => {
+    console.log('📊 Preview data:', data);
+    console.log('🔗 API Base URL:', API_BASE_URL);
+  }, [data, API_BASE_URL]);
 
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      if (!data.download_url) {
-        alert('Download URL not available');
+      // CRITICAL FIX: Validate download URL exists
+      if (!data || !data.download_url) {
+        console.error('❌ No download URL in data:', data);
+        alert('Download URL not available. Please contact support.');
         return;
       }
 
-      // Open download in new tab
-      const downloadUrl = `${API_BASE_URL}${data.download_url}`;
+      // CRITICAL FIX: Construct full download URL properly
+      const downloadUrl = data.download_url.startsWith('http') 
+        ? data.download_url 
+        : `${API_BASE_URL}${data.download_url}`;
+
       console.log('📥 Downloading from:', downloadUrl);
       
-      window.open(downloadUrl, '_blank');
+      // CRITICAL FIX: Use axios with proper auth headers
+      const token = localStorage.getItem('token');
+      const response = await axios.get(downloadUrl, {
+        responseType: 'blob',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
-      // Show success message
-      setTimeout(() => {
-        alert('Download started! Check your downloads folder.');
-      }, 500);
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${data.project_name || 'app'}-${Date.now()}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      alert('✅ Download started! Check your downloads folder.');
 
     } catch (error) {
       console.error('Download error:', error);
-      alert('Download failed: ' + error.message);
+      alert('Download failed: ' + (error.response?.data?.error || error.message));
     } finally {
       setDownloading(false);
     }
@@ -50,6 +78,25 @@ function AppPreview({ data, onStartNew }) {
       alert('Link copied to clipboard!');
     }
   };
+
+  // CRITICAL FIX: Validate data exists
+  if (!data || !data.summary) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-white mb-2">Preview Data Missing</h2>
+          <p className="text-slate-400 mb-6">Unable to load build results</p>
+          <button
+            onClick={onStartNew}
+            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:scale-105 transition-all"
+          >
+            Start New Build
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const codePreview = {
     'App.jsx': `import React from 'react';
@@ -130,7 +177,7 @@ model User {
           <div className="flex flex-wrap justify-center gap-3 mb-8">
             <StatPill icon={<FileCode />} label="Files" value={data.summary?.files_generated || 0} />
             <StatPill icon={<Code />} label="Lines" value={(data.summary?.lines_of_code || 0).toLocaleString()} />
-            <StatPill icon={<Zap />} label="Time" value="3 min" />
+            <StatPill icon={<Zap />} label="Time" value={`${Math.floor((data.summary?.time_taken || 180) / 60)} min`} />
             <StatPill icon={<Award />} label="QA Score" value={`${data.summary?.qa_score || 0}/100`} />
           </div>
 
@@ -254,14 +301,31 @@ model User {
                 <QuickStatCard
                   title="Code Quality"
                   items={[
-                    { label: 'Security', value: `${data.qa_results?.security?.score || 85}/100` },
-                    { label: 'Performance', value: `${data.qa_results?.performance?.score || 82}/100` },
-                    { label: 'Best Practices', value: `${data.qa_results?.code_quality?.score || 88}/100` }
+                    { label: 'Security', value: `${data.phases?.quality?.qa_results?.security?.score || 85}/100` },
+                    { label: 'Performance', value: `${data.phases?.quality?.qa_results?.performance?.score || 82}/100` },
+                    { label: 'Best Practices', value: `${data.phases?.quality?.qa_results?.code_quality?.score || 88}/100` }
                   ]}
                   icon={<Award />}
                   color="from-emerald-500 to-teal-600"
                 />
               </div>
+
+              {/* Research Insights */}
+              {data.phases?.research && (
+                <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+                  <h3 className="text-xl font-bold text-white mb-4">Market Research Insights</h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-400 mb-2">Competitors Analyzed</h4>
+                      <p className="text-2xl font-bold text-white">{data.summary?.competitors_analyzed || 0}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-400 mb-2">User Reviews Scanned</h4>
+                      <p className="text-2xl font-bold text-white">{data.summary?.reviews_scanned || 0}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

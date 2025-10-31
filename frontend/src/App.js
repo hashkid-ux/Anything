@@ -1,3 +1,6 @@
+// frontend/src/App.js
+// FULLY FIXED - Production Ready with Environment Variables
+
 import React, { useState, useEffect } from 'react';
 import { Rocket, Menu, X, Sparkles, Crown, Bell, Settings, LogOut, User, ChevronDown } from 'lucide-react';
 import axios from 'axios';
@@ -13,9 +16,12 @@ import SettingsModal from './components/Settings/SettingsModal';
 import ProfileModal from './components/Profile/ProfileModal';
 import ErrorBoundary from './components/ErrorBoundary';
 
-// Configure axios
-axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// CRITICAL FIX: Configure axios with environment variable
+const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
+axios.defaults.baseURL = API_BASE_URL;
 axios.defaults.timeout = 30000;
+
+console.log('🔗 API Base URL:', API_BASE_URL);
 
 function App() {
   const [view, setView] = useState('landing');
@@ -54,9 +60,10 @@ function App() {
     }
   }, [isOAuthCallback]);
 
-  // Listen for preview event from Dashboard
+  // CRITICAL FIX: Listen for preview event from Dashboard
   useEffect(() => {
     const handleShowPreview = (event) => {
+      console.log('📊 Preview event received:', event.detail);
       setBuildData(event.detail);
       setView('preview');
     };
@@ -146,7 +153,7 @@ function App() {
       return;
     }
 
-    // Use credit
+    // CRITICAL FIX: Use credit endpoint
     try {
       await axios.post('/api/auth/use-credit');
       await loadUserFromAPI();
@@ -163,7 +170,16 @@ function App() {
   };
 
   const handleBuildComplete = async (data) => {
-    console.log('Build complete:', data);
+    console.log('✅ Build complete:', data);
+    
+    // CRITICAL FIX: Validate data structure
+    if (!data || !data.summary) {
+      console.error('❌ Invalid build data:', data);
+      alert('Build completed but data is incomplete. Please try downloading from dashboard.');
+      setView('dashboard');
+      return;
+    }
+
     setBuildData(data);
     setView('preview');
     

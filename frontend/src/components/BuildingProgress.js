@@ -1,5 +1,9 @@
+// frontend/src/components/BuildingProgress.js
+// FULLY FIXED - Production Ready with Environment Variables
+
 import React, { useState, useEffect } from 'react';
 import { Loader, Check, Brain, Code, Database, Rocket, FileCode, AlertCircle, RefreshCw } from 'lucide-react';
+import axios from 'axios';
 
 function BuildingProgress({ prompt, onComplete, onRetry }) {
   const [buildId, setBuildId] = useState(null);
@@ -19,9 +23,11 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
   const [error, setError] = useState(null);
   const [startTime] = useState(Date.now());
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+  // CRITICAL FIX: Use environment variable with fallback
+  const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
 
   useEffect(() => {
+    console.log('🔗 API Base URL:', API_BASE_URL);
     startBuild();
   }, []);
 
@@ -30,8 +36,15 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
 
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/master/build/${buildId}`);
-        const data = await response.json();
+        const response = await axios.get(`${API_BASE_URL}/api/master/build/${buildId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        
+        const data = response.data;
+
+        console.log('📊 Build progress:', data);
 
         setProgress({
           phase: data.phase || 'building',
@@ -43,19 +56,35 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
           setLogs(data.logs.slice(-20));
         }
 
-        if (data.results) {
+        // CRITICAL FIX: Update stats from response
+        if (data.stats) {
           setStats({
-            filesGenerated: data.results.summary?.files_generated || 0,
-            linesOfCode: data.results.summary?.lines_of_code || 0,
-            competitorsAnalyzed: data.results.phases?.research?.competitors?.total_analyzed || 0,
-            reviewsScanned: data.results.phases?.research?.reviews?.total_reviews || 0
+            filesGenerated: data.stats.filesGenerated || 0,
+            linesOfCode: data.stats.linesOfCode || 0,
+            competitorsAnalyzed: data.stats.competitorsAnalyzed || 0,
+            reviewsScanned: data.stats.reviewsScanned || 0
           });
         }
 
         if (data.status === 'completed') {
           clearInterval(interval);
           console.log('✅ Build completed!', data.results);
-          setTimeout(() => onComplete(data.results), 1000);
+          
+          // CRITICAL FIX: Ensure results have proper structure
+          const completeResults = {
+            ...data.results,
+            download_url: data.download_url || data.results?.download_url,
+            summary: data.results?.summary || {
+              files_generated: data.stats?.filesGenerated || 0,
+              lines_of_code: data.stats?.linesOfCode || 0,
+              competitors_analyzed: data.stats?.competitorsAnalyzed || 0,
+              reviews_scanned: data.stats?.reviewsScanned || 0,
+              qa_score: data.results?.summary?.qa_score || 0,
+              deployment_ready: data.results?.summary?.deployment_ready || false
+            }
+          };
+
+          setTimeout(() => onComplete(completeResults), 1000);
         }
 
         if (data.status === 'failed') {
@@ -65,11 +94,15 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
 
       } catch (error) {
         console.error('Poll error:', error);
+        if (error.response?.status === 404) {
+          clearInterval(interval);
+          setError('Build not found. Please try again.');
+        }
       }
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [buildId]);
+  }, [buildId, API_BASE_URL, onComplete]);
 
   const startBuild = async () => {
     try {
@@ -82,13 +115,9 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/master/build`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const response = await axios.post(
+        `${API_BASE_URL}/api/master/build`,
+        {
           projectName: extractProjectName(prompt),
           description: prompt,
           targetCountry: 'Global',
@@ -96,16 +125,20 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
           framework: 'react',
           database: 'postgresql',
           targetPlatform: 'web'
-        })
-      });
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Build start failed');
+      if (response.data.error) {
+        throw new Error(response.data.error);
       }
 
-      const data = await response.json();
-      const { build_id, project_id } = data;
+      const { build_id, project_id } = response.data;
       
       console.log('✅ Build started:', { build_id, project_id });
       
@@ -117,7 +150,7 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
 
     } catch (error) {
       console.error('❌ Build start failed:', error);
-      setError(error.message || 'Failed to start build');
+      setError(error.response?.data?.error || error.message || 'Failed to start build');
     }
   };
 
@@ -138,6 +171,8 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
     setProgress({ phase: 'initializing', progress: 0, message: 'Retrying...' });
     setStats({ filesGenerated: 0, linesOfCode: 0, competitorsAnalyzed: 0, reviewsScanned: 0 });
     setLogs([]);
+    setBuildId(null);
+    setProjectId(null);
     startBuild();
   };
 
@@ -204,10 +239,30 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-4 gap-4 mb-8">
-          <StatCard icon={<FileCode />} label="Files" value={stats.filesGenerated} animating={stats.filesGenerated > 0} />
-          <StatCard icon={<Code />} label="Lines" value={stats.linesOfCode.toLocaleString()} animating={stats.linesOfCode > 0} />
-          <StatCard icon={<Brain />} label="Competitors" value={stats.competitorsAnalyzed} animating={stats.competitorsAnalyzed > 0} />
-          <StatCard icon={<Database />} label="Reviews" value={stats.reviewsScanned} animating={stats.reviewsScanned > 0} />
+          <StatCard 
+            icon={<FileCode />} 
+            label="Files" 
+            value={stats.filesGenerated} 
+            animating={stats.filesGenerated > 0} 
+          />
+          <StatCard 
+            icon={<Code />} 
+            label="Lines" 
+            value={stats.linesOfCode.toLocaleString()} 
+            animating={stats.linesOfCode > 0} 
+          />
+          <StatCard 
+            icon={<Brain />} 
+            label="Competitors" 
+            value={stats.competitorsAnalyzed} 
+            animating={stats.competitorsAnalyzed > 0} 
+          />
+          <StatCard 
+            icon={<Database />} 
+            label="Reviews" 
+            value={stats.reviewsScanned} 
+            animating={stats.reviewsScanned > 0} 
+          />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">

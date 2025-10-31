@@ -1,3 +1,6 @@
+// frontend/src/components/Dashboard/Dashboard.js
+// FULLY FIXED - Production Ready with Environment Variables
+
 import React, { useState, useEffect } from 'react';
 import { 
   Rocket, Plus, Folder, Download, Eye, Trash2, Crown, Zap, 
@@ -12,6 +15,9 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
   const [retrying, setRetrying] = useState({});
   const [dashboardStats, setDashboardStats] = useState(null);
 
+  // CRITICAL FIX: Use environment variable
+  const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
+
   useEffect(() => {
     loadDashboardData();
     // Poll for building projects
@@ -21,10 +27,16 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
 
   const loadDashboardData = async () => {
     try {
-      const projectsRes = await axios.get('/api/projects');
+      const token = localStorage.getItem('token');
+      
+      const projectsRes = await axios.get(`${API_BASE_URL}/api/projects`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setProjects(projectsRes.data.projects || []);
 
-      const overviewRes = await axios.get('/api/dashboard/overview');
+      const overviewRes = await axios.get(`${API_BASE_URL}/api/dashboard/overview`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setDashboardStats(overviewRes.data.stats);
     } catch (error) {
       console.error('Failed to load dashboard:', error);
@@ -36,19 +48,28 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
   const handleRetryBuild = async (project) => {
     setRetrying(prev => ({ ...prev, [project.id]: true }));
     try {
-      // Start a new build with the same data
-      const response = await axios.post('/api/master/build', {
-        projectId: project.id,
-        projectName: project.name,
-        description: project.description || project.prompt,
-        framework: project.framework || 'react',
-        database: project.database || 'postgresql',
-        targetPlatform: project.targetPlatform || 'web'
-      });
+      const token = localStorage.getItem('token');
+      
+      const response = await axios.post(
+        `${API_BASE_URL}/api/master/build`,
+        {
+          projectId: project.id,
+          projectName: project.name,
+          description: project.description || project.prompt,
+          framework: project.framework || 'react',
+          database: project.database || 'postgresql',
+          targetPlatform: project.targetPlatform || 'web'
+        },
+        {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
       alert(`Build restarted! Build ID: ${response.data.build_id}`);
       
-      // Reload projects
       await loadDashboardData();
     } catch (error) {
       console.error('Retry failed:', error);
@@ -59,10 +80,11 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
   };
 
   const handleViewPreview = (project) => {
-    // Navigate to preview by setting buildData in parent
+    // CRITICAL FIX: Dispatch event with project data to show preview in App.js
     if (project.buildData) {
-      // Create preview URL with project data
-      window.location.href = `/preview/${project.id}`;
+      window.dispatchEvent(new CustomEvent('showPreview', { 
+        detail: project.buildData 
+      }));
     } else {
       alert('Preview not available - build data missing');
     }
@@ -75,14 +97,42 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
         return;
       }
 
-      // Track download
-      await axios.post(`/api/projects/${project.id}/download`);
+      const token = localStorage.getItem('token');
+      
+      // CRITICAL FIX: Use environment variable for download URL
+      const downloadUrl = project.downloadUrl.startsWith('http') 
+        ? project.downloadUrl 
+        : `${API_BASE_URL}${project.downloadUrl}`;
 
-      // Download file
-      window.open(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}${project.downloadUrl}`, '_blank');
+      console.log('📥 Downloading from:', downloadUrl);
+
+      // Track download
+      await axios.post(
+        `${API_BASE_URL}/api/projects/${project.id}/download`,
+        {},
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+
+      // Download file using blob
+      const response = await axios.get(downloadUrl, {
+        responseType: 'blob',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${project.name}-${Date.now()}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      alert('✅ Download started! Check your downloads folder.');
     } catch (error) {
       console.error('Download failed:', error);
-      alert('Download failed: ' + error.message);
+      alert('Download failed: ' + (error.response?.data?.error || error.message));
     }
   };
 
@@ -92,7 +142,12 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
     }
 
     try {
-      await axios.delete(`/api/projects/${projectId}`);
+      const token = localStorage.getItem('token');
+      
+      await axios.delete(`${API_BASE_URL}/api/projects/${projectId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
       await loadDashboardData();
     } catch (error) {
       console.error('Delete failed:', error);
