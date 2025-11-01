@@ -1,8 +1,8 @@
 // frontend/src/App.js
-// FULLY FIXED - Production Ready with Environment Variables
+// COMPLETE UI/UX REDESIGN - Production Ready
 
 import React, { useState, useEffect } from 'react';
-import { Rocket, Menu, X, Sparkles, Crown, Bell, Settings, LogOut, User, ChevronDown } from 'lucide-react';
+import { Rocket, Menu, X, Sparkles, Crown, Bell, Settings, LogOut, User, ChevronDown, Zap } from 'lucide-react';
 import axios from 'axios';
 import BuilderInterface from './components/BuilderInterface';
 import BuildingProgress from './components/BuildingProgress';
@@ -16,12 +16,9 @@ import SettingsModal from './components/Settings/SettingsModal';
 import ProfileModal from './components/Profile/ProfileModal';
 import ErrorBoundary from './components/ErrorBoundary';
 
-// CRITICAL FIX: Configure axios with environment variable
 const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
 axios.defaults.baseURL = API_BASE_URL;
 axios.defaults.timeout = 30000;
-
-console.log('🔗 API Base URL:', API_BASE_URL);
 
 function App() {
   const [view, setView] = useState('landing');
@@ -39,7 +36,6 @@ function App() {
   const [isOAuthCallback, setIsOAuthCallback] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Check OAuth callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('token') || window.location.pathname === '/auth/callback') {
@@ -47,10 +43,8 @@ function App() {
     }
   }, []);
 
-  // Load user on mount
   useEffect(() => {
     if (isOAuthCallback) return;
-    
     const token = localStorage.getItem('token');
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -60,17 +54,25 @@ function App() {
     }
   }, [isOAuthCallback]);
 
-  // CRITICAL FIX: Listen for preview event from Dashboard
   useEffect(() => {
     const handleShowPreview = (event) => {
-      console.log('📊 Preview event received:', event.detail);
       setBuildData(event.detail);
       setView('preview');
     };
-
     window.addEventListener('showPreview', handleShowPreview);
     return () => window.removeEventListener('showPreview', handleShowPreview);
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowUserMenu(false);
+      setShowMobileMenu(false);
+    };
+    if (showUserMenu || showMobileMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showUserMenu, showMobileMenu]);
 
   const loadUserFromAPI = async () => {
     try {
@@ -133,7 +135,6 @@ function App() {
     } catch (error) {
       console.error('Logout error:', error);
     }
-    
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     delete axios.defaults.headers.common['Authorization'];
@@ -147,13 +148,10 @@ function App() {
       setShowLoginModal(true);
       return;
     }
-
     if (user.credits <= 0) {
       setShowPricingModal(true);
       return;
     }
-
-    // CRITICAL FIX: Use credit endpoint
     try {
       await axios.post('/api/auth/use-credit');
       await loadUserFromAPI();
@@ -164,34 +162,22 @@ function App() {
         return;
       }
     }
-
     setUserPrompt(prompt);
     setView('building');
   };
 
   const handleBuildComplete = async (data) => {
-    console.log('✅ Build complete:', data);
-    
-    // CRITICAL FIX: Validate data structure
     if (!data || !data.summary) {
-      console.error('❌ Invalid build data:', data);
       alert('Build completed but data is incomplete. Please try downloading from dashboard.');
       setView('dashboard');
       return;
     }
-
     setBuildData(data);
     setView('preview');
-    
-    if (user) {
-      await loadUserFromAPI();
-    }
+    if (user) await loadUserFromAPI();
   };
 
-  const handleRetryBuild = () => {
-    setView('building');
-  };
-
+  const handleRetryBuild = () => setView('building');
   const handleBackToDashboard = () => {
     setView('dashboard');
     setBuildData(null);
@@ -200,24 +186,9 @@ function App() {
 
   const getTierConfig = (tier) => {
     const configs = {
-      free: { 
-        icon: Sparkles, 
-        color: 'from-gray-500 to-gray-600', 
-        label: 'Free',
-        textColor: 'text-gray-400'
-      },
-      starter: { 
-        icon: Rocket, 
-        color: 'from-blue-500 to-cyan-600', 
-        label: 'Starter',
-        textColor: 'text-blue-400'
-      },
-      premium: { 
-        icon: Crown, 
-        color: 'from-purple-500 to-pink-600', 
-        label: 'Premium',
-        textColor: 'text-purple-400'
-      }
+      free: { icon: Sparkles, color: 'from-slate-500 to-slate-600', label: 'Free', textColor: 'text-slate-400', glow: 'shadow-slate-500/20' },
+      starter: { icon: Zap, color: 'from-blue-500 to-cyan-500', label: 'Starter', textColor: 'text-blue-400', glow: 'shadow-blue-500/30' },
+      premium: { icon: Crown, color: 'from-purple-500 via-pink-500 to-rose-500', label: 'Premium', textColor: 'text-purple-400', glow: 'shadow-purple-500/40' }
     };
     return configs[tier] || configs.free;
   };
@@ -227,10 +198,12 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
-          <p className="text-white text-lg">Loading...</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 flex items-center justify-center">
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl opacity-20 animate-pulse"></div>
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
+          </div>
         </div>
       </div>
     );
@@ -239,90 +212,86 @@ function App() {
   if (isOAuthCallback) {
     return (
       <ErrorBoundary>
-        <OAuthCallback 
-          onSuccess={handleOAuthSuccess}
-          onError={handleOAuthError}
-        />
+        <OAuthCallback onSuccess={handleOAuthSuccess} onError={handleOAuthError} />
       </ErrorBoundary>
     );
   }
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative">
-        {/* Global Navigation - Hide during building */}
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 relative overflow-hidden">
+        {/* Ambient Background Effects */}
+        <div className="fixed inset-0 pointer-events-none">
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-float"></div>
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }}></div>
+          <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-pink-500/5 rounded-full blur-3xl animate-float" style={{ animationDelay: '4s' }}></div>
+        </div>
+
+        {/* Navigation */}
         {view !== 'building' && (
-          <header className="sticky top-0 z-50 border-b border-white/10 backdrop-blur-xl bg-black/20">
-            <div className="max-w-7xl mx-auto px-4 py-4">
-              <div className="flex items-center justify-between">
+          <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-2xl border-b border-white/5">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center justify-between h-16">
                 {/* Logo */}
                 <button 
                   onClick={() => setView(user ? 'dashboard' : 'landing')}
-                  className="flex items-center gap-3 group"
+                  className="flex items-center gap-3 group relative z-10"
                 >
                   <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl blur-lg opacity-50 group-hover:opacity-75 transition-opacity"></div>
-                    <div className="relative bg-gradient-to-br from-blue-500 to-purple-600 p-2.5 rounded-xl group-hover:scale-110 transition-transform">
-                      <Rocket className="w-6 h-6 text-white" />
+                    <div className={`absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-300`}></div>
+                    <div className="relative bg-gradient-to-br from-blue-500 to-purple-600 p-2 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                      <Rocket className="w-5 h-5 text-white" />
                     </div>
                   </div>
                   <div className="hidden sm:block">
-                    <h1 className="text-xl font-black text-white group-hover:text-purple-300 transition-colors">
+                    <h1 className="text-lg font-bold text-white group-hover:text-purple-300 transition-colors duration-300">
                       Launch AI
                     </h1>
-                    <p className="text-xs text-gray-400 font-medium">Build • Deploy • Scale</p>
                   </div>
                 </button>
 
-                {/* Desktop Nav */}
+                {/* Desktop Navigation */}
                 {user && (
-                  <nav className="hidden lg:flex items-center gap-6">
-                    <NavLink 
-                      active={view === 'dashboard'} 
-                      onClick={() => setView('dashboard')}
-                    >
+                  <div className="hidden lg:flex items-center gap-2">
+                    <NavLink active={view === 'dashboard'} onClick={() => setView('dashboard')}>
                       Dashboard
                     </NavLink>
-                    <NavLink 
-                      active={view === 'builder'} 
-                      onClick={() => setView('builder')}
-                    >
+                    <NavLink active={view === 'builder'} onClick={() => setView('builder')}>
                       Build New
                     </NavLink>
                     <NavLink onClick={() => setShowPricingModal(true)}>
                       Pricing
                     </NavLink>
-                  </nav>
+                  </div>
                 )}
 
-                {/* Right Side */}
-                <div className="flex items-center gap-4">
+                {/* Right Side Actions */}
+                <div className="flex items-center gap-3">
                   {user ? (
-                    <div className="flex items-center gap-3">
+                    <>
                       {/* Tier Badge */}
                       <button
                         onClick={() => setShowPricingModal(true)}
-                        className={`hidden sm:flex items-center gap-2 bg-gradient-to-r ${tierConfig.color} px-4 py-2 rounded-xl hover:scale-105 transition-transform`}
+                        className={`hidden sm:flex items-center gap-2 bg-gradient-to-r ${tierConfig.color} px-3 py-1.5 rounded-lg hover:scale-105 transition-all duration-300 ${tierConfig.glow} shadow-lg`}
                       >
-                        <TierIcon className="w-4 h-4 text-white" />
-                        <span className="text-white font-bold text-sm">{tierConfig.label}</span>
+                        <TierIcon className="w-3.5 h-3.5 text-white" />
+                        <span className="text-white font-semibold text-xs">{tierConfig.label}</span>
                       </button>
 
                       {/* Credits */}
-                      <div className="hidden sm:block bg-white/10 backdrop-blur-md border border-white/20 px-4 py-2 rounded-xl">
-                        <span className="text-white font-bold text-sm tabular-nums">
-                          {user.credits} credits
-                        </span>
+                      <div className="hidden sm:flex items-center gap-2 bg-white/5 backdrop-blur-xl border border-white/10 px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors duration-300">
+                        <Zap className="w-3.5 h-3.5 text-yellow-400" />
+                        <span className="text-white font-semibold text-xs tabular-nums">{user.credits}</span>
                       </div>
 
                       {/* Notifications */}
                       <button 
-                        onClick={() => setShowNotificationPanel(true)}
-                        className="relative p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors"
+                        onClick={(e) => { e.stopPropagation(); setShowNotificationPanel(true); }}
+                        className="relative p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-all duration-300 hover:scale-105"
                       >
-                        <Bell className="w-5 h-5 text-white" />
+                        <Bell className="w-4 h-4 text-white" />
                         {notifications.length > 0 && (
-                          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                          <span className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-red-500 to-pink-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
                             {notifications.length}
                           </span>
                         )}
@@ -331,75 +300,73 @@ function App() {
                       {/* User Menu */}
                       <div className="relative">
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowUserMenu(!showUserMenu);
-                          }}
-                          className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 pl-3 pr-2 py-2 rounded-xl transition-all group"
+                          onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); }}
+                          className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 pl-2 pr-1.5 py-1.5 rounded-lg transition-all duration-300 hover:scale-105"
                         >
                           {user.avatar ? (
-                            <img 
-                              src={user.avatar} 
-                              alt={user.name}
-                              className="w-8 h-8 rounded-lg object-cover"
-                            />
+                            <img src={user.avatar} alt={user.name} className="w-7 h-7 rounded-md object-cover" />
                           ) : (
-                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                            <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-purple-600 rounded-md flex items-center justify-center">
                               <User className="w-4 h-4 text-white" />
                             </div>
                           )}
-                          <span className="hidden md:block text-white font-semibold text-sm max-w-[100px] truncate">
-                            {user.name}
-                          </span>
-                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showUserMenu ? 'rotate-180' : ''}`} />
+                          <span className="hidden md:block text-white font-medium text-sm max-w-[80px] truncate">{user.name.split(' ')[0]}</span>
+                          <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-300 ${showUserMenu ? 'rotate-180' : ''}`} />
                         </button>
 
-                        {/* Dropdown */}
                         {showUserMenu && (
-                          <div 
-                            className="absolute right-0 mt-2 w-64 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden"
-                            onClick={(e) => e.stopPropagation()}
-                          >
+                          <div className="absolute right-0 mt-2 w-64 bg-slate-900/95 backdrop-blur-2xl border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-scale-in">
+                            <div className="p-4 border-b border-white/10">
+                              <div className="flex items-center gap-3 mb-3">
+                                {user.avatar ? (
+                                  <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-lg object-cover" />
+                                ) : (
+                                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                                    <User className="w-6 h-6 text-white" />
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-white font-semibold truncate text-sm">{user.name}</p>
+                                  <p className="text-slate-400 text-xs truncate">{user.email}</p>
+                                </div>
+                              </div>
+                              <div className={`inline-flex items-center gap-2 bg-gradient-to-r ${tierConfig.color} px-2.5 py-1 rounded-md`}>
+                                <TierIcon className="w-3 h-3 text-white" />
+                                <span className="text-white font-semibold text-xs">{tierConfig.label}</span>
+                                <span className="text-white/60 text-xs">•</span>
+                                <span className="text-white text-xs">{user.credits} credits</span>
+                              </div>
+                            </div>
                             <div className="p-2">
-                              <UserMenuItem 
-                                icon={<User />}
-                                label="Profile"
-                                onClick={() => { setShowUserMenu(false); setShowProfileModal(true); }}
-                              />
-                              <UserMenuItem 
-                                icon={<Settings />}
-                                label="Settings"
-                                onClick={() => { setShowUserMenu(false); setShowSettingsModal(true); }}
-                              />
-                              <UserMenuItem 
-                                icon={<Crown />}
-                                label="Upgrade"
-                                onClick={() => { setShowUserMenu(false); setShowPricingModal(true); }}
-                                highlight
-                              />
-                              <div className="h-px bg-white/10 my-2"></div>
-                              <UserMenuItem 
-                                icon={<LogOut />}
-                                label="Logout"
-                                onClick={handleLogout}
-                                danger
-                              />
+                              <UserMenuItem icon={<User />} label="Profile" onClick={() => { setShowUserMenu(false); setShowProfileModal(true); }} />
+                              <UserMenuItem icon={<Settings />} label="Settings" onClick={() => { setShowUserMenu(false); setShowSettingsModal(true); }} />
+                              <UserMenuItem icon={<Crown />} label="Upgrade Plan" onClick={() => { setShowUserMenu(false); setShowPricingModal(true); }} highlight />
+                              <div className="h-px bg-white/10 my-1"></div>
+                              <UserMenuItem icon={<LogOut />} label="Sign Out" onClick={handleLogout} danger />
                             </div>
                           </div>
                         )}
                       </div>
-                    </div>
+
+                      {/* Mobile Menu Toggle */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowMobileMenu(!showMobileMenu); }}
+                        className="lg:hidden p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-all duration-300"
+                      >
+                        {showMobileMenu ? <X className="w-5 h-5 text-white" /> : <Menu className="w-5 h-5 text-white" />}
+                      </button>
+                    </>
                   ) : (
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => setShowLoginModal(true)}
-                        className="hidden sm:block px-6 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold rounded-xl transition-all"
+                        className="hidden sm:block px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-sm rounded-lg transition-all duration-300 hover:scale-105"
                       >
                         Sign In
                       </button>
                       <button
                         onClick={() => setShowLoginModal(true)}
-                        className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold rounded-xl transition-all hover:scale-105"
+                        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold text-sm rounded-lg transition-all duration-300 hover:scale-105 shadow-lg shadow-purple-500/30"
                       >
                         Get Started Free
                       </button>
@@ -407,77 +374,38 @@ function App() {
                   )}
                 </div>
               </div>
+
+              {/* Mobile Menu */}
+              {showMobileMenu && user && (
+                <div className="lg:hidden py-4 border-t border-white/10 animate-slide-down">
+                  <div className="space-y-1">
+                    <MobileNavLink onClick={() => { setView('dashboard'); setShowMobileMenu(false); }}>Dashboard</MobileNavLink>
+                    <MobileNavLink onClick={() => { setView('builder'); setShowMobileMenu(false); }}>Build New App</MobileNavLink>
+                    <MobileNavLink onClick={() => { setShowPricingModal(true); setShowMobileMenu(false); }}>Pricing</MobileNavLink>
+                  </div>
+                </div>
+              )}
             </div>
-          </header>
+          </nav>
         )}
 
         {/* Main Content */}
-        <main className="relative">
-          {view === 'landing' && (
-            <BuilderInterface onStartBuilding={handleStartBuilding} />
-          )}
-
+        <main className="relative pt-16">
+          {view === 'landing' && <BuilderInterface onStartBuilding={handleStartBuilding} />}
           {view === 'dashboard' && user && (
-            <Dashboard
-              user={user}
-              onLogout={handleLogout}
-              onBuildNew={() => setView('builder')}
-              onOpenPricing={() => setShowPricingModal(true)}
-            />
+            <Dashboard user={user} onLogout={handleLogout} onBuildNew={() => setView('builder')} onOpenPricing={() => setShowPricingModal(true)} />
           )}
-
-          {view === 'builder' && user && (
-            <BuilderInterface onStartBuilding={handleStartBuilding} />
-          )}
-
-          {view === 'building' && (
-            <BuildingProgress 
-              prompt={userPrompt} 
-              onComplete={handleBuildComplete}
-              onRetry={handleRetryBuild}
-            />
-          )}
-
-          {view === 'preview' && buildData && (
-            <AppPreview 
-              data={buildData}
-              onStartNew={handleBackToDashboard}
-            />
-          )}
+          {view === 'builder' && user && <BuilderInterface onStartBuilding={handleStartBuilding} />}
+          {view === 'building' && <BuildingProgress prompt={userPrompt} onComplete={handleBuildComplete} onRetry={handleRetryBuild} />}
+          {view === 'preview' && buildData && <AppPreview data={buildData} onStartNew={handleBackToDashboard} />}
         </main>
 
         {/* Modals */}
-        <LoginModal
-          isOpen={showLoginModal}
-          onClose={() => setShowLoginModal(false)}
-          onLoginSuccess={handleLoginSuccess}
-        />
-
-        <PricingModal
-          isOpen={showPricingModal}
-          onClose={() => setShowPricingModal(false)}
-          currentTier={user?.tier || 'free'}
-          onUpgradeSuccess={loadUserFromAPI}
-        />
-
-        <NotificationPanel
-          isOpen={showNotificationPanel}
-          onClose={() => setShowNotificationPanel(false)}
-          user={user}
-        />
-
-        <SettingsModal
-          isOpen={showSettingsModal}
-          onClose={() => setShowSettingsModal(false)}
-          user={user}
-          onUpdate={loadUserFromAPI}
-        />
-
-        <ProfileModal
-          isOpen={showProfileModal}
-          onClose={() => setShowProfileModal(false)}
-          user={user}
-        />
+        <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} onLoginSuccess={handleLoginSuccess} />
+        <PricingModal isOpen={showPricingModal} onClose={() => setShowPricingModal(false)} currentTier={user?.tier || 'free'} onUpgradeSuccess={loadUserFromAPI} />
+        <NotificationPanel isOpen={showNotificationPanel} onClose={() => setShowNotificationPanel(false)} user={user} />
+        <SettingsModal isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} user={user} onUpdate={loadUserFromAPI} />
+        <ProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} user={user} />
       </div>
     </ErrorBoundary>
   );
@@ -487,14 +415,25 @@ function NavLink({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={`relative px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-        active ? 'text-white' : 'text-gray-400 hover:text-white'
+      className={`relative px-3 py-2 rounded-lg font-medium text-sm transition-all duration-300 ${
+        active ? 'text-white bg-white/10' : 'text-slate-400 hover:text-white hover:bg-white/5'
       }`}
     >
       {children}
       {active && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
       )}
+    </button>
+  );
+}
+
+function MobileNavLink({ onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-4 py-2.5 text-white font-medium rounded-lg hover:bg-white/10 transition-all duration-300 text-sm"
+    >
+      {children}
     </button>
   );
 }
@@ -503,12 +442,12 @@ function UserMenuItem({ icon, label, onClick, highlight, danger }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${
         danger 
           ? 'text-red-400 hover:bg-red-500/10' 
           : highlight
           ? 'text-purple-400 hover:bg-purple-500/10'
-          : 'text-gray-300 hover:bg-white/10 hover:text-white'
+          : 'text-slate-300 hover:bg-white/10 hover:text-white'
       }`}
     >
       {React.cloneElement(icon, { className: 'w-4 h-4' })}
