@@ -32,77 +32,89 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
   }, []);
 
   useEffect(() => {
-    if (!buildId) return;
+  if (!buildId) return;
 
-    const interval = setInterval(async () => {
-      try {
-        const response = await axios.get(`${API_BASE_URL}/api/master/build/${buildId}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        
-        const data = response.data;
+  let isActive = true;
 
-        console.log('📊 Build progress:', data);
+  const pollBuild = async () => {
+    if (!isActive) return;
 
-        setProgress({
-          phase: data.phase || 'building',
-          progress: data.progress || 0,
-          message: data.message || 'Building...'
-        });
-
-        if (data.logs && Array.isArray(data.logs)) {
-          setLogs(data.logs.slice(-20));
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/master/build/${buildId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
+      });
+      
+      const data = response.data;
+      console.log('📊 Build progress:', data);
 
-        // CRITICAL FIX: Update stats from response
-        if (data.stats) {
-          setStats({
-            filesGenerated: data.stats.filesGenerated || 0,
-            linesOfCode: data.stats.linesOfCode || 0,
-            competitorsAnalyzed: data.stats.competitorsAnalyzed || 0,
-            reviewsScanned: data.stats.reviewsScanned || 0
-          });
-        }
+      setProgress({
+        phase: data.phase || 'building',
+        progress: data.progress || 0,
+        message: data.message || 'Building...'
+      });
 
-        if (data.status === 'completed') {
-          clearInterval(interval);
-          console.log('✅ Build completed!', data.results);
-          
-          // CRITICAL FIX: Ensure results have proper structure
-          const completeResults = {
-            ...data.results,
-            download_url: data.download_url || data.results?.download_url,
-            summary: data.results?.summary || {
-              files_generated: data.stats?.filesGenerated || 0,
-              lines_of_code: data.stats?.linesOfCode || 0,
-              competitors_analyzed: data.stats?.competitorsAnalyzed || 0,
-              reviews_scanned: data.stats?.reviewsScanned || 0,
-              qa_score: data.results?.summary?.qa_score || 0,
-              deployment_ready: data.results?.summary?.deployment_ready || false
-            }
-          };
-
-          setTimeout(() => onComplete(completeResults), 1000);
-        }
-
-        if (data.status === 'failed') {
-          clearInterval(interval);
-          setError(data.error || 'Build failed');
-        }
-
-      } catch (error) {
-        console.error('Poll error:', error);
-        if (error.response?.status === 404) {
-          clearInterval(interval);
-          setError('Build not found. Please try again.');
-        }
+      if (data.logs && Array.isArray(data.logs)) {
+        setLogs(data.logs.slice(-20));
       }
-    }, 2000);
 
-    return () => clearInterval(interval);
-  }, [buildId, API_BASE_URL, onComplete]);
+      if (data.stats) {
+        setStats({
+          filesGenerated: data.stats.filesGenerated || 0,
+          linesOfCode: data.stats.linesOfCode || 0,
+          competitorsAnalyzed: data.stats.competitorsAnalyzed || 0,
+          reviewsScanned: data.stats.reviewsScanned || 0
+        });
+      }
+
+      if (data.status === 'completed') {
+        isActive = false;
+        console.log('✅ Build completed!', data.results);
+        
+        const completeResults = {
+          ...data.results,
+          download_url: data.download_url || data.results?.download_url,
+          summary: data.results?.summary || {
+            files_generated: data.stats?.filesGenerated || 0,
+            lines_of_code: data.stats?.linesOfCode || 0,
+            competitors_analyzed: data.stats?.competitorsAnalyzed || 0,
+            reviews_scanned: data.stats?.reviewsScanned || 0,
+            qa_score: data.results?.summary?.qa_score || 0,
+            deployment_ready: data.results?.summary?.deployment_ready || false
+          }
+        };
+
+        setTimeout(() => onComplete(completeResults), 1000);
+      }
+
+      if (data.status === 'failed') {
+        isActive = false;
+        setError(data.error || 'Build failed');
+      }
+
+    } catch (error) {
+      console.error('Poll error:', error);
+      
+      // CRITICAL FIX: Stop polling on 404 or other errors
+      if (error.response?.status === 404 || error.response?.status === 500) {
+        isActive = false;
+        setError(error.response?.data?.error || 'Build not found. Please try again.');
+      }
+    }
+  };
+
+  // Initial poll
+  pollBuild();
+
+  // Poll every 2 seconds
+  const interval = setInterval(pollBuild, 2000);
+
+  return () => {
+    isActive = false;
+    clearInterval(interval);
+  };
+}, [buildId, API_BASE_URL, onComplete])
 
   const startBuild = async () => {
     try {
