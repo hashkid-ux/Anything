@@ -1,12 +1,14 @@
 // frontend/src/components/BuildingProgress.js
-// COMPLETE UI/UX REDESIGN with Real-time Progress Tracking
+// COMPLETE REPLACEMENT - Copy this entire file
 
 import React, { useState, useEffect } from 'react';
 import { 
   Loader, Check, Brain, Code, Database, Rocket, FileCode, 
-  AlertCircle, RefreshCw, Zap, TrendingUp, BarChart3, CheckCircle2
+  AlertCircle, RefreshCw, Zap, TrendingUp, BarChart3, CheckCircle2,
+  Eye, Monitor, Play
 } from 'lucide-react';
 import axios from 'axios';
+import LiveAppPreview from './LiveAppPreview';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
 
@@ -28,6 +30,11 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
   const [error, setError] = useState(null);
   const [startTime] = useState(Date.now());
   const [elapsedTime, setElapsedTime] = useState(0);
+  
+  // Live Preview State
+  const [generatedFiles, setGeneratedFiles] = useState({});
+  const [showLivePreview, setShowLivePreview] = useState(false);
+  const [previewAvailable, setPreviewAvailable] = useState(false);
 
   useEffect(() => {
     console.log('🔗 API Base URL:', API_BASE_URL);
@@ -72,6 +79,20 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
           });
         }
 
+        // Update generated files for live preview
+        if (data.files) {
+          setGeneratedFiles(data.files);
+          if (!previewAvailable && Object.keys(data.files).length > 0) {
+            setPreviewAvailable(true);
+            addLog('🎨 Live preview available!');
+          }
+        }
+
+        // Enable preview when code generation starts (50%+)
+        if (data.progress >= 50 && !showLivePreview) {
+          setShowLivePreview(true);
+        }
+
         if (data.status === 'completed') {
           isActive = false;
           const completeResults = {
@@ -105,7 +126,7 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
     pollBuild();
     const interval = setInterval(pollBuild, 2000);
     return () => { isActive = false; clearInterval(interval); };
-  }, [buildId, API_BASE_URL, onComplete]);
+  }, [buildId, API_BASE_URL, onComplete, previewAvailable, showLivePreview]);
 
   const startBuild = async () => {
     try {
@@ -156,6 +177,9 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
     setLogs([]);
     setBuildId(null);
     setProjectId(null);
+    setGeneratedFiles({});
+    setShowLivePreview(false);
+    setPreviewAvailable(false);
     startBuild();
   };
 
@@ -206,27 +230,9 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
         {/* Header with Progress Circle */}
         <div className="text-center mb-8 sm:mb-12">
           <div className="relative inline-block mb-6">
-            {/* Animated Circle Progress */}
             <svg className="w-32 h-32 sm:w-40 sm:h-40 -rotate-90">
-              <circle
-                cx="50%"
-                cy="50%"
-                r="45%"
-                stroke="rgba(255,255,255,0.1)"
-                strokeWidth="8"
-                fill="none"
-              />
-              <circle
-                cx="50%"
-                cy="50%"
-                r="45%"
-                stroke="url(#progressGradient)"
-                strokeWidth="8"
-                fill="none"
-                strokeDasharray={`${(progress.progress / 100) * 283} 283`}
-                strokeLinecap="round"
-                className="transition-all duration-1000"
-              />
+              <circle cx="50%" cy="50%" r="45%" stroke="rgba(255,255,255,0.1)" strokeWidth="8" fill="none" />
+              <circle cx="50%" cy="50%" r="45%" stroke="url(#progressGradient)" strokeWidth="8" fill="none" strokeDasharray={`${(progress.progress / 100) * 283} 283`} strokeLinecap="round" className="transition-all duration-1000" />
               <defs>
                 <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#3b82f6" />
@@ -247,6 +253,13 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
             <Zap className="w-4 h-4 text-yellow-400 animate-pulse" />
             <span>{minutes}:{String(seconds).padStart(2, '0')} elapsed</span>
           </div>
+
+          {previewAvailable && (
+            <div className="mt-4 inline-flex items-center gap-2 bg-green-500/10 border border-green-500/30 px-4 py-2 rounded-full animate-scale-in">
+              <Play className="w-4 h-4 text-green-400" />
+              <span className="text-green-300 font-medium text-sm">Live Preview Available!</span>
+            </div>
+          )}
         </div>
 
         {/* Stats Grid */}
@@ -281,9 +294,14 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
           />
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Phases Progress */}
-          <div className="lg:col-span-2 space-y-3 sm:space-y-4">
+        {/* Main Content: Phases + Live Preview */}
+        <div className="grid lg:grid-cols-2 gap-6">
+          {/* LEFT: Build Phases */}
+          <div className="space-y-3 sm:space-y-4">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Rocket className="w-5 h-5 text-purple-400" />
+              Build Progress
+            </h3>
             {phases.map((phase, index) => {
               const PhaseIcon = phase.icon;
               const isActive = currentPhaseIndex === index;
@@ -300,7 +318,6 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
                   }`}
                 >
                   <div className="flex items-center gap-3 sm:gap-4">
-                    {/* Icon */}
                     <div className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center transition-all duration-500 ${
                       isCompleted 
                         ? 'bg-gradient-to-br from-green-500 to-emerald-500 scale-110' 
@@ -318,7 +335,6 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
                       )}
                     </div>
 
-                    {/* Content */}
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
                         <h3 className={`font-bold text-sm sm:text-base transition-colors ${
@@ -331,7 +347,6 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
                         </span>
                       </div>
                       
-                      {/* Progress Bar */}
                       <div className="w-full bg-white/10 rounded-full h-2">
                         <div 
                           className={`h-full rounded-full transition-all duration-1000 ${
@@ -349,38 +364,71 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
                 </div>
               );
             })}
-          </div>
 
-          {/* Live Activity Log */}
-          <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden">
-            <div className="bg-white/5 px-4 sm:px-5 py-3 sm:py-4 border-b border-white/10 flex items-center justify-between">
-              <h3 className="text-white font-bold text-sm sm:text-base">Live Activity</h3>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-xs text-green-400 font-medium">LIVE</span>
+            {/* Activity Log */}
+            <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden">
+              <div className="bg-white/5 px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                <h3 className="text-white font-bold text-sm">Live Activity</h3>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-xs text-green-400 font-medium">LIVE</span>
+                </div>
+              </div>
+              <div className="p-3 max-h-[200px] overflow-y-auto font-mono text-xs scrollbar-thin">
+                {logs.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Loader className="w-6 h-6 animate-spin mx-auto mb-2 text-purple-500" />
+                    <p className="text-slate-500 text-xs">Initializing...</p>
+                  </div>
+                ) : (
+                  logs.slice().reverse().map((log, i) => (
+                    <div key={i} className="text-slate-300 mb-1 text-xs">
+                      <span className="text-slate-500 mr-2">
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </span>
+                      {log.message}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
-            <div className="p-3 sm:p-4 max-h-[400px] sm:max-h-[500px] overflow-y-auto font-mono text-xs scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-              {logs.length === 0 ? (
-                <div className="text-center py-12">
-                  <Loader className="w-8 h-8 animate-spin mx-auto mb-3 text-purple-500" />
-                  <p className="text-slate-500 text-xs">Initializing AI agents...</p>
-                </div>
-              ) : (
-                logs.slice().reverse().map((log, i) => (
-                  <div 
-                    key={i} 
-                    className="text-slate-300 mb-2 hover:bg-white/5 p-2 rounded transition-colors animate-slide-in-right"
-                    style={{ animationDelay: `${i * 50}ms` }}
-                  >
-                    <span className="text-slate-500 mr-2 text-[10px]">
-                      {new Date(log.timestamp).toLocaleTimeString()}
-                    </span>
-                    <span className="text-xs">{log.message}</span>
-                  </div>
-                ))
+          </div>
+
+          {/* RIGHT: LIVE PREVIEW */}
+          <div className="lg:sticky lg:top-24">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Eye className="w-5 h-5 text-blue-400" />
+                Live Preview
+              </h3>
+              {!showLivePreview && (
+                <span className="text-xs text-slate-500 bg-slate-800 px-3 py-1 rounded-full">
+                  Available at 50%
+                </span>
               )}
             </div>
+
+            {showLivePreview && previewAvailable ? (
+              <LiveAppPreview 
+                buildId={buildId}
+                files={generatedFiles}
+                progress={progress}
+              />
+            ) : (
+              <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-12 text-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 opacity-50">
+                  <Monitor className="w-10 h-10 text-white" />
+                </div>
+                <h4 className="text-lg font-semibold text-white mb-2">Preview Coming Soon</h4>
+                <p className="text-slate-400 text-sm mb-4">
+                  Live preview will appear when code generation starts (50%+)
+                </p>
+                <div className="inline-flex items-center gap-2 text-xs text-slate-500">
+                  <Loader className="w-4 h-4 animate-spin" />
+                  <span>Generating frontend code...</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -397,19 +445,19 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
               <ul className="text-blue-200 text-sm space-y-2">
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Your app is being built with production-ready code</span>
+                  <span>Watch your app being built in real-time</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>AI agents are researching your market and competitors</span>
+                  <span>Test the UI interactively as it's generated</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Database schema and API routes are being generated</span>
+                  <span>Preview works on desktop, tablet, and mobile</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Quality assurance tests will run automatically</span>
+                  <span>AI is researching your market and optimizing code</span>
                 </li>
               </ul>
             </div>
