@@ -1,61 +1,123 @@
 // frontend/src/components/AppPreview.js
-// FULLY FIXED - Production Ready with Environment Variables
+// FULLY FIXED - Handles both old and new build formats
 
-import React, { useState, useEffect } from 'react';
-import { Download, Share2, Code, CheckCircle, ArrowRight, Zap, Award, BarChart3, Rocket, Globe, Database, Layers, FileCode, X, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Download, Share2, Code, CheckCircle, ArrowRight, Zap, Award, BarChart3, Rocket, Globe, Database, Layers, FileCode } from 'lucide-react';
 import axios from 'axios';
+import LiveAppPreview from './LiveAppPreview';
 
 function AppPreview({ data, onStartNew }) {
   const [downloading, setDownloading] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('preview');
   const [selectedCodeFile, setSelectedCodeFile] = useState('App.jsx');
-
-  // CRITICAL FIX: Use environment variable with fallback
+  const [showLivePreview, setShowLivePreview] = useState(true);
+  
+  const hasLoggedRef = useRef(false);
   const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
 
+  // CRITICAL FIX: Normalize data structure for both old and new builds
   useEffect(() => {
-    console.log('📊 Preview data:', data);
-    console.log('🔗 API Base URL:', API_BASE_URL);
-  }, [data, API_BASE_URL]);
+    if (!hasLoggedRef.current && data) {
+      console.log('📊 Preview data received:', {
+        hasBuildId: !!data.build_id,
+        hasSummary: !!data.summary,
+        hasPhases: !!data.phases,
+        hasFiles: !!(data.files || data.phases?.phase3),
+        structure: Object.keys(data)
+      });
+      hasLoggedRef.current = true;
+    }
+  }, [data]);
+
+  // CRITICAL FIX: Extract data with fallbacks for both formats
+  const extractBuildData = () => {
+    if (!data) return null;
+
+    // Get build_id (required for live preview)
+    const buildId = data.build_id || data.id || 'completed';
+
+    // Get summary (from either location)
+    const summary = data.summary || {
+      files_generated: data.filesGenerated || 0,
+      lines_of_code: data.linesOfCode || 0,
+      qa_score: data.qaScore || 0,
+      deployment_ready: data.deploymentReady || false,
+      time_taken: data.timeTaken || 0,
+      research_score: 0,
+      competitive_advantages: 0
+    };
+
+    // Get files (multiple possible locations)
+    let files = {};
+    
+    if (data.files && Object.keys(data.files).length > 0) {
+      // New format: direct files property
+      files = data.files;
+    } else if (data.phases?.phase3) {
+      // Phase-based format
+      files = {
+        ...(data.phases.phase3.frontend?.files || {}),
+        ...(data.phases.phase3.backend?.files || {})
+      };
+    } else if (data.buildData?.files) {
+      // Database format
+      files = data.buildData.files;
+    }
+
+    console.log('📦 Extracted files:', Object.keys(files).length);
+
+    // Get phases (if available)
+    const phases = data.phases || {
+      research: data.researchData,
+      quality: { qa_results: { overall_score: summary.qa_score } }
+    };
+
+    // Get download URL
+    const downloadUrl = data.download_url || data.downloadUrl || null;
+
+    return {
+      buildId,
+      summary,
+      files,
+      phases,
+      downloadUrl,
+      projectName: data.project_name || data.name || 'My App'
+    };
+  };
+
+  const buildData = extractBuildData();
 
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      // CRITICAL FIX: Validate download URL exists
-      if (!data || !data.download_url) {
-        console.error('❌ No download URL in data:', data);
-        alert('Download URL not available. Please contact support.');
+      if (!buildData?.downloadUrl) {
+        alert('Download URL not available. The build may not be complete.');
         return;
       }
 
-      // CRITICAL FIX: Construct full download URL properly
-      const downloadUrl = data.download_url.startsWith('http') 
-        ? data.download_url 
-        : `${API_BASE_URL}${data.download_url}`;
+      const downloadUrl = buildData.downloadUrl.startsWith('http') 
+        ? buildData.downloadUrl 
+        : `${API_BASE_URL}${buildData.downloadUrl}`;
 
       console.log('📥 Downloading from:', downloadUrl);
       
-      // CRITICAL FIX: Use axios with proper auth headers
       const token = localStorage.getItem('token');
       const response = await axios.get(downloadUrl, {
         responseType: 'blob',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` },
+        timeout: 60000
       });
 
-      // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${data.project_name || 'app'}-${Date.now()}.zip`);
+      link.setAttribute('download', `${buildData.projectName || 'app'}-${Date.now()}.zip`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
 
       alert('✅ Download started! Check your downloads folder.');
-
     } catch (error) {
       console.error('Download error:', error);
       alert('Download failed: ' + (error.response?.data?.error || error.message));
@@ -66,8 +128,8 @@ function AppPreview({ data, onStartNew }) {
 
   const handleShare = () => {
     const shareData = {
-      title: `I built ${data.summary?.files_generated || 0} files with Launch AI!`,
-      text: `Just generated a full-stack app with ${data.summary?.lines_of_code || 0} lines of code in minutes using AI!`,
+      title: `I built ${buildData?.summary?.files_generated || 0} files with Launch AI!`,
+      text: `Just generated a full-stack app with ${buildData?.summary?.lines_of_code || 0} lines of code!`,
       url: window.location.href
     };
 
@@ -79,14 +141,26 @@ function AppPreview({ data, onStartNew }) {
     }
   };
 
-  // CRITICAL FIX: Validate data exists
-  if (!data || !data.summary) {
+  // Validate extracted data
+  if (!buildData || !buildData.summary) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
           <div className="text-6xl mb-4">⚠️</div>
           <h2 className="text-2xl font-bold text-white mb-2">Preview Data Missing</h2>
-          <p className="text-slate-400 mb-6">Unable to load build results</p>
+          <p className="text-slate-400 mb-4">Unable to load build results</p>
+          <details className="text-left bg-slate-800/50 rounded-lg p-4 mb-6">
+            <summary className="text-sm text-slate-300 cursor-pointer mb-2">Debug Info</summary>
+            <pre className="text-xs text-slate-400 overflow-auto">
+              {JSON.stringify({
+                hasData: !!data,
+                dataKeys: data ? Object.keys(data) : [],
+                hasSummary: !!(data?.summary),
+                hasPhases: !!(data?.phases),
+                hasFiles: !!(data?.files)
+              }, null, 2)}
+            </pre>
+          </details>
           <button
             onClick={onStartNew}
             className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:scale-105 transition-all"
@@ -98,61 +172,14 @@ function AppPreview({ data, onStartNew }) {
     );
   }
 
+  // Extract code files for preview
   const codePreview = {
-    'App.jsx': `import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import HomePage from './pages/HomePage';
-import DashboardPage from './pages/DashboardPage';
-
-function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-      </Routes>
-    </BrowserRouter>
-  );
-}
-
-export default App;`,
-    'server.js': `const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-
-const app = express();
-
-app.use(cors());
-app.use(helmet());
-app.use(express.json());
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'healthy' });
-});
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(\`Server running on port \${PORT}\`);
-});`,
-    'schema.prisma': `generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  @@index([email])
-}`
+    'App.jsx': buildData.files['src/App.js'] || buildData.files['frontend/src/App.js'] || 'No App.js found',
+    'server.js': buildData.files['server.js'] || buildData.files['backend/server.js'] || 'No server.js found',
+    'schema.prisma': buildData.files['prisma/schema.prisma'] || buildData.files['backend/prisma/schema.prisma'] || 'No schema found'
   };
+
+  const hasFiles = Object.keys(buildData.files).length > 0;
 
   return (
     <div className="min-h-screen relative">
@@ -175,22 +202,22 @@ model User {
 
           {/* Stats Pills */}
           <div className="flex flex-wrap justify-center gap-3 mb-8">
-            <StatPill icon={<FileCode />} label="Files" value={data.summary?.files_generated || 0} />
-            <StatPill icon={<Code />} label="Lines" value={(data.summary?.lines_of_code || 0).toLocaleString()} />
-            <StatPill icon={<Zap />} label="Time" value={`${Math.floor((data.summary?.time_taken || 180) / 60)} min`} />
-            <StatPill icon={<Award />} label="QA Score" value={`${data.summary?.qa_score || 0}/100`} />
+            <StatPill icon={<FileCode />} label="Files" value={buildData.summary.files_generated} />
+            <StatPill icon={<Code />} label="Lines" value={buildData.summary.lines_of_code.toLocaleString()} />
+            <StatPill icon={<Zap />} label="Time" value={`${Math.floor((buildData.summary.time_taken || 180) / 60)} min`} />
+            <StatPill icon={<Award />} label="QA Score" value={`${buildData.summary.qa_score || 0}/100`} />
           </div>
 
           {/* Main Actions */}
           <div className="flex flex-wrap justify-center gap-3 mb-6">
             <button 
               onClick={handleDownload}
-              disabled={downloading}
-              className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:opacity-50 text-white font-semibold rounded-xl shadow-lg hover:shadow-purple-500/25 transition-all hover:scale-[1.02]"
+              disabled={downloading || !buildData.downloadUrl}
+              className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl shadow-lg hover:shadow-purple-500/25 transition-all hover:scale-[1.02]"
             >
               <Download className="w-5 h-5" />
               <span>{downloading ? 'Downloading...' : 'Download Code'}</span>
-              <span className="text-xs opacity-80">({data.summary?.files_generated || 0} files)</span>
+              <span className="text-xs opacity-80">({buildData.summary.files_generated} files)</span>
             </button>
             
             <button 
@@ -211,7 +238,7 @@ model User {
           </div>
 
           {/* Ready Badge */}
-          {data.summary?.deployment_ready && (
+          {buildData.summary.deployment_ready && (
             <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 px-4 py-2 rounded-full">
               <CheckCircle className="w-4 h-4 text-emerald-400" />
               <span className="text-emerald-300 font-medium text-sm">Production Ready • Deploy Anytime</span>
@@ -224,31 +251,38 @@ model User {
           <MetricCard
             icon={<BarChart3 />}
             label="QA Score"
-            value={`${data.summary?.qa_score || 0}/100`}
+            value={`${buildData.summary.qa_score || 0}/100`}
             color="from-blue-500 to-indigo-600"
           />
           <MetricCard
             icon={<Award />}
             label="Research Score"
-            value={`${data.summary?.research_score || 0}/100`}
+            value={`${buildData.summary.research_score || 0}/100`}
             color="from-emerald-500 to-teal-600"
           />
           <MetricCard
             icon={<Rocket />}
             label="Advantages"
-            value={data.summary?.competitive_advantages || 0}
+            value={buildData.summary.competitive_advantages || 0}
             color="from-purple-500 to-pink-600"
           />
           <MetricCard
             icon={<FileCode />}
             label="Files"
-            value={data.summary?.files_generated || 0}
+            value={buildData.summary.files_generated}
             color="from-orange-500 to-red-600"
           />
         </div>
 
         {/* Tabs */}
         <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+          <TabButton 
+            active={activeTab === 'preview'} 
+            onClick={() => setActiveTab('preview')}
+            icon={<Globe />}
+          >
+            Live Preview
+          </TabButton>
           <TabButton 
             active={activeTab === 'overview'} 
             onClick={() => setActiveTab('overview')}
@@ -274,16 +308,53 @@ model User {
 
         {/* Content Area */}
         <div className="space-y-6">
+          {/* LIVE PREVIEW TAB */}
+          {activeTab === 'preview' && (
+            <div className="animate-fade-in">
+              {hasFiles ? (
+                <div className="bg-slate-800/30 border border-slate-700 rounded-xl overflow-hidden">
+                  <div className="bg-slate-700/50 px-4 py-3 border-b border-slate-600 flex items-center justify-between">
+                    <h3 className="text-white font-semibold">Interactive Preview</h3>
+                    <span className="text-xs text-green-400 flex items-center gap-1">
+                      <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                      LIVE
+                    </span>
+                  </div>
+                  <LiveAppPreview 
+                    buildId={buildData.buildId}
+                    files={buildData.files}
+                    progress={{ progress: 100, phase: 'completed' }}
+                  />
+                </div>
+              ) : (
+                <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-12 text-center">
+                  <Globe className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+                  <h4 className="text-lg font-semibold text-white mb-2">Preview Not Available</h4>
+                  <p className="text-slate-400 mb-4">No files found for preview</p>
+                  {buildData.downloadUrl && (
+                    <button
+                      onClick={handleDownload}
+                      disabled={downloading}
+                      className="mt-4 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:scale-105 transition-all disabled:opacity-50"
+                    >
+                      Download Code Instead
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* OTHER TABS (Overview, Code, Architecture) */}
           {activeTab === 'overview' && (
             <div className="space-y-6 animate-fade-in">
-              {/* Quick Stats */}
               <div className="grid md:grid-cols-3 gap-4">
                 <QuickStatCard
                   title="Generated Files"
                   items={[
-                    { label: 'React Components', value: Math.floor((data.summary?.files_generated || 0) * 0.4) },
-                    { label: 'API Routes', value: Math.floor((data.summary?.files_generated || 0) * 0.3) },
-                    { label: 'Database Models', value: Math.floor((data.summary?.files_generated || 0) * 0.3) }
+                    { label: 'React Components', value: Math.floor(buildData.summary.files_generated * 0.4) },
+                    { label: 'API Routes', value: Math.floor(buildData.summary.files_generated * 0.3) },
+                    { label: 'Database Models', value: Math.floor(buildData.summary.files_generated * 0.3) }
                   ]}
                   icon={<FileCode />}
                   color="from-blue-500 to-indigo-600"
@@ -301,39 +372,20 @@ model User {
                 <QuickStatCard
                   title="Code Quality"
                   items={[
-                    { label: 'Security', value: `${data.phases?.quality?.qa_results?.security?.score || 85}/100` },
-                    { label: 'Performance', value: `${data.phases?.quality?.qa_results?.performance?.score || 82}/100` },
-                    { label: 'Best Practices', value: `${data.phases?.quality?.qa_results?.code_quality?.score || 88}/100` }
+                    { label: 'Security', value: `${buildData.phases?.quality?.qa_results?.security?.score || 85}/100` },
+                    { label: 'Performance', value: `${buildData.phases?.quality?.qa_results?.performance?.score || 82}/100` },
+                    { label: 'Best Practices', value: `${buildData.summary.qa_score || 88}/100` }
                   ]}
                   icon={<Award />}
                   color="from-emerald-500 to-teal-600"
                 />
               </div>
-
-              {/* Research Insights */}
-              {data.phases?.research && (
-                <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Market Research Insights</h3>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-400 mb-2">Competitors Analyzed</h4>
-                      <p className="text-2xl font-bold text-white">{data.summary?.competitors_analyzed || 0}</p>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-400 mb-2">User Reviews Scanned</h4>
-                      <p className="text-2xl font-bold text-white">{data.summary?.reviews_scanned || 0}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
           {activeTab === 'code' && (
             <div className="space-y-6 animate-fade-in">
-              {/* Code Browser */}
               <div className="bg-black/40 backdrop-blur-sm border border-slate-700 rounded-xl overflow-hidden">
-                {/* File Tabs */}
                 <div className="bg-slate-800/50 border-b border-slate-700 px-4 py-2 flex gap-2 overflow-x-auto">
                   {Object.keys(codePreview).map((file) => (
                     <button
@@ -349,38 +401,11 @@ model User {
                     </button>
                   ))}
                 </div>
-
-                {/* Code Content */}
-                <pre className="p-6 overflow-x-auto">
+                <pre className="p-6 overflow-x-auto max-h-[500px]">
                   <code className="text-slate-300 font-mono text-xs leading-relaxed">
                     {codePreview[selectedCodeFile]}
                   </code>
                 </pre>
-              </div>
-
-              {/* Code Packages */}
-              <div className="grid md:grid-cols-3 gap-4">
-                <CodePackageCard
-                  icon={<Globe />}
-                  title="Frontend"
-                  tech="React + Tailwind"
-                  files={`${Math.floor((data.summary?.files_generated || 0) * 0.5)} files`}
-                  color="from-blue-500 to-indigo-600"
-                />
-                <CodePackageCard
-                  icon={<Database />}
-                  title="Backend"
-                  tech="Node.js + Express"
-                  files={`${Math.floor((data.summary?.files_generated || 0) * 0.3)} files`}
-                  color="from-purple-500 to-pink-600"
-                />
-                <CodePackageCard
-                  icon={<Database />}
-                  title="Database"
-                  tech="PostgreSQL + Prisma"
-                  files={`${Math.floor((data.summary?.files_generated || 0) * 0.2)} files`}
-                  color="from-emerald-500 to-teal-600"
-                />
               </div>
             </div>
           )}
@@ -399,8 +424,8 @@ model User {
           <div className="flex flex-wrap justify-center gap-3">
             <button 
               onClick={handleDownload}
-              disabled={downloading}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold rounded-xl flex items-center gap-2 transition-all hover:scale-[1.02]"
+              disabled={downloading || !buildData.downloadUrl}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:opacity-50 text-white font-semibold rounded-xl flex items-center gap-2 transition-all hover:scale-[1.02]"
             >
               <Download className="w-5 h-5" />
               Download Code
@@ -423,7 +448,7 @@ model User {
 function StatPill({ icon, label, value }) {
   return (
     <div className="inline-flex items-center gap-2 bg-slate-800/50 backdrop-blur-sm border border-slate-700 px-4 py-2 rounded-full">
-      <div className="text-slate-400">{icon}</div>
+      <div className="text-slate-400">{React.cloneElement(icon, { className: 'w-4 h-4' })}</div>
       <div>
         <div className="text-white font-bold text-sm tabular-nums">{value}</div>
         <div className="text-slate-500 text-xs">{label}</div>
@@ -436,7 +461,7 @@ function MetricCard({ icon, label, value, color }) {
   return (
     <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-5">
       <div className={`inline-flex p-3 bg-gradient-to-br ${color} rounded-xl mb-3`}>
-        {icon}
+        {React.cloneElement(icon, { className: 'w-5 h-5 text-white' })}
       </div>
       <div className="text-2xl font-bold text-white mb-1 tabular-nums">{value}</div>
       <div className="text-xs font-medium text-slate-500 uppercase">{label}</div>
@@ -454,7 +479,7 @@ function TabButton({ active, onClick, icon, children }) {
           : 'bg-slate-800/30 text-slate-400 hover:bg-slate-800/50 hover:text-slate-300 border border-slate-700'
       }`}
     >
-      {icon}
+      {React.cloneElement(icon, { className: 'w-4 h-4' })}
       <span>{children}</span>
     </button>
   );
@@ -465,7 +490,7 @@ function QuickStatCard({ title, items, icon, color }) {
     <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-5">
       <div className="flex items-center gap-2 mb-4">
         <div className={`p-2 bg-gradient-to-br ${color} rounded-lg`}>
-          {icon}
+          {React.cloneElement(icon, { className: 'w-5 h-5 text-white' })}
         </div>
         <h4 className="text-sm font-semibold text-white">{title}</h4>
       </div>
@@ -477,19 +502,6 @@ function QuickStatCard({ title, items, icon, color }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function CodePackageCard({ icon, title, tech, files, color }) {
-  return (
-    <div className="group bg-slate-800/30 backdrop-blur-sm border border-slate-700 rounded-xl p-5 hover:bg-slate-800/50 hover:border-slate-600 transition-all">
-      <div className={`inline-flex p-3 bg-gradient-to-br ${color} rounded-xl mb-3 group-hover:scale-110 transition-transform`}>
-        {icon}
-      </div>
-      <h4 className="text-base font-semibold text-white mb-1">{title}</h4>
-      <p className="text-slate-400 text-sm mb-1">{tech}</p>
-      <p className="text-slate-500 text-xs">{files}</p>
     </div>
   );
 }

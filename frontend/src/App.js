@@ -1,5 +1,5 @@
 // frontend/src/App.js
-// COMPLETE UI/UX REDESIGN - Production Ready
+// FIXED: Support resuming builds from dashboard
 
 import React, { useState, useEffect } from 'react';
 import { Rocket, Menu, X, Sparkles, Crown, Bell, Settings, LogOut, User, ChevronDown, Zap } from 'lucide-react';
@@ -53,6 +53,20 @@ function App() {
       setLoading(false);
     }
   }, [isOAuthCallback]);
+
+  // CRITICAL FIX: Listen for resume building event
+  useEffect(() => {
+    const handleResumeBuilding = (event) => {
+      const { projectId, buildId, prompt, projectName } = event.detail;
+      console.log('🔄 Resume building event received:', { projectId, buildId, projectName });
+      
+      setUserPrompt(prompt || `Resuming build for ${projectName}`);
+      setView('building');
+    };
+    
+    window.addEventListener('resumeBuilding', handleResumeBuilding);
+    return () => window.removeEventListener('resumeBuilding', handleResumeBuilding);
+  }, []);
 
   useEffect(() => {
     const handleShowPreview = (event) => {
@@ -393,7 +407,12 @@ function App() {
         <main className="relative pt-16">
           {view === 'landing' && <BuilderInterface onStartBuilding={handleStartBuilding} />}
           {view === 'dashboard' && user && (
-            <Dashboard user={user} onLogout={handleLogout} onBuildNew={() => setView('builder')} onOpenPricing={() => setShowPricingModal(true)} />
+            <Dashboard 
+              user={user} 
+              onLogout={handleLogout} 
+              onBuildNew={() => setView('builder')} 
+              onOpenPricing={() => setShowPricingModal(true)}
+            />
           )}
           {view === 'builder' && user && <BuilderInterface onStartBuilding={handleStartBuilding} />}
           {view === 'building' && <BuildingProgress prompt={userPrompt} onComplete={handleBuildComplete} onRetry={handleRetryBuild} />}

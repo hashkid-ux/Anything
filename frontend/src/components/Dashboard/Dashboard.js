@@ -1,5 +1,5 @@
 // frontend/src/components/Dashboard/Dashboard.js
-// FULLY FIXED - Production Ready with Environment Variables
+// FIXED: Click building project to resume progress
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -9,13 +9,12 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 
-function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
+function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState({});
   const [dashboardStats, setDashboardStats] = useState(null);
 
-  // CRITICAL FIX: Use environment variable
   const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
 
   useEffect(() => {
@@ -45,6 +44,28 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
     }
   };
 
+  // CRITICAL FIX: Resume building progress
+  const handleResumeBuilding = (project) => {
+    console.log('🔄 Resuming build for project:', project.id);
+    
+    // Get build_id from project data
+    const buildId = project.buildData?.build_id || `build_${Date.now()}_resume`;
+    
+    // Store in session storage so BuildingProgress can resume
+    sessionStorage.setItem('currentBuildId', buildId);
+    sessionStorage.setItem('currentProjectId', project.id);
+    
+    // Dispatch event to App.js to show BuildingProgress
+    window.dispatchEvent(new CustomEvent('resumeBuilding', { 
+      detail: { 
+        projectId: project.id,
+        buildId: buildId,
+        prompt: project.description || project.prompt,
+        projectName: project.name
+      } 
+    }));
+  };
+
   const handleRetryBuild = async (project) => {
     setRetrying(prev => ({ ...prev, [project.id]: true }));
     try {
@@ -70,7 +91,13 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
 
       alert(`Build restarted! Build ID: ${response.data.build_id}`);
       
-      await loadDashboardData();
+      // Store for resuming
+      sessionStorage.setItem('currentBuildId', response.data.build_id);
+      sessionStorage.setItem('currentProjectId', project.id);
+      
+      // Show building progress
+      handleResumeBuilding(project);
+      
     } catch (error) {
       console.error('Retry failed:', error);
       alert('Failed to retry build: ' + (error.response?.data?.error || error.message));
@@ -80,7 +107,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
   };
 
   const handleViewPreview = (project) => {
-    // CRITICAL FIX: Dispatch event with project data to show preview in App.js
     if (project.buildData) {
       window.dispatchEvent(new CustomEvent('showPreview', { 
         detail: project.buildData 
@@ -99,7 +125,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
 
       const token = localStorage.getItem('token');
       
-      // CRITICAL FIX: Use environment variable for download URL
       const downloadUrl = project.downloadUrl.startsWith('http') 
         ? project.downloadUrl 
         : `${API_BASE_URL}${project.downloadUrl}`;
@@ -119,7 +144,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -230,7 +254,7 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
           />
         </div>
 
-        {/* Building Projects (Live) */}
+        {/* Building Projects (Live) - FIXED WITH CLICK TO RESUME */}
         {buildingProjects.length > 0 && (
           <div className="mb-8">
             <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -239,7 +263,11 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
             </h3>
             <div className="space-y-4">
               {buildingProjects.map(project => (
-                <BuildingProjectCard key={project.id} project={project} />
+                <BuildingProjectCard 
+                  key={project.id} 
+                  project={project}
+                  onResume={() => handleResumeBuilding(project)}
+                />
               ))}
             </div>
           </div>
@@ -317,12 +345,23 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
   );
 }
 
-// Building Project Card
-function BuildingProjectCard({ project }) {
+// FIXED: Building Project Card - Click to Resume
+function BuildingProjectCard({ project, onResume }) {
   return (
-    <div className="bg-slate-800/30 border-2 border-blue-500/50 rounded-xl p-5 animate-pulse-slow">
+    <button
+      onClick={onResume}
+      className="w-full bg-slate-800/30 border-2 border-blue-500/50 rounded-xl p-5 animate-pulse-slow hover:bg-slate-800/50 hover:border-blue-500/70 transition-all cursor-pointer group"
+    >
       <div className="flex items-center justify-between mb-3">
-        <h4 className="text-lg font-semibold text-white">{project.name}</h4>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
+            <Loader2 className="w-5 h-5 text-white animate-spin" />
+          </div>
+          <div className="text-left">
+            <h4 className="text-lg font-semibold text-white">{project.name}</h4>
+            <p className="text-xs text-slate-400">Click to resume</p>
+          </div>
+        </div>
         <div className="px-3 py-1 bg-blue-500/20 border border-blue-500/30 rounded-lg">
           <span className="text-xs font-semibold text-blue-300">BUILDING</span>
         </div>
@@ -336,15 +375,21 @@ function BuildingProjectCard({ project }) {
         </div>
         <p className="text-xs text-slate-400 mt-1">{project.buildProgress || 0}% complete</p>
       </div>
-      <p className="text-sm text-slate-400">
-        <Clock className="w-3 h-3 inline mr-1" />
-        Started {new Date(project.createdAt).toLocaleTimeString()}
-      </p>
-    </div>
+      <div className="flex items-center justify-between text-sm">
+        <p className="text-slate-400">
+          <Clock className="w-3 h-3 inline mr-1" />
+          Started {new Date(project.createdAt).toLocaleTimeString()}
+        </p>
+        <div className="flex items-center gap-2 text-blue-400 group-hover:text-blue-300">
+          <Play className="w-4 h-4" />
+          <span className="text-xs font-medium">Resume</span>
+        </div>
+      </div>
+    </button>
   );
 }
 
-// Failed Project Card
+// Failed Project Card (same as before)
 function FailedProjectCard({ project, onRetry, onDelete, retrying }) {
   return (
     <div className="bg-slate-800/30 border-2 border-red-500/50 rounded-xl p-5">
@@ -381,7 +426,7 @@ function FailedProjectCard({ project, onRetry, onDelete, retrying }) {
   );
 }
 
-// Completed Project Card
+// Completed Project Card (same as before)
 function CompletedProjectCard({ project, onViewPreview, onDownload, onDelete }) {
   return (
     <div className="group bg-slate-800/30 border border-slate-700 rounded-xl p-5 hover:bg-slate-800/50 hover:border-slate-600 transition-all">

@@ -1,7 +1,7 @@
 // frontend/src/components/BuildingProgress.js
-// COMPLETE REPLACEMENT - Copy this entire file
+// FULLY FIXED - Build starts properly + Progress updates correctly
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Loader, Check, Brain, Code, Database, Rocket, FileCode, 
   AlertCircle, RefreshCw, Zap, TrendingUp, BarChart3, CheckCircle2,
@@ -35,12 +35,36 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
   const [generatedFiles, setGeneratedFiles] = useState({});
   const [showLivePreview, setShowLivePreview] = useState(false);
   const [previewAvailable, setPreviewAvailable] = useState(false);
+  const [buildCompleted, setBuildCompleted] = useState(false);
+  const [completedData, setCompletedData] = useState(null);
+  
+  const pollIntervalRef = useRef(null);
+  const buildStartedRef = useRef(false);
 
+  // CRITICAL FIX: Check for existing build OR start new build
   useEffect(() => {
-    console.log('🔗 API Base URL:', API_BASE_URL);
-    startBuild();
-  }, []);
+    const initBuild = async () => {
+      // Check session storage for existing build
+      const savedBuildId = sessionStorage.getItem('currentBuildId');
+      const savedProjectId = sessionStorage.getItem('currentProjectId');
+      
+      if (savedBuildId && savedProjectId && !buildStartedRef.current) {
+        console.log('🔄 Resuming existing build:', savedBuildId);
+        setBuildId(savedBuildId);
+        setProjectId(savedProjectId);
+        buildStartedRef.current = true;
+        addLog('🔄 Resuming build from session...');
+      } else if (!buildStartedRef.current) {
+        console.log('🚀 Starting new build...');
+        await startNewBuild();
+        buildStartedRef.current = true;
+      }
+    };
 
+    initBuild();
+  }, []); // Only run once
+
+  // Elapsed time counter
   useEffect(() => {
     const timer = setInterval(() => {
       setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
@@ -48,88 +72,151 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
     return () => clearInterval(timer);
   }, [startTime]);
 
+  // CRITICAL FIX: Polling with proper cleanup
   useEffect(() => {
-    if (!buildId) return;
-    let isActive = true;
+    if (!buildId || buildCompleted) {
+      return;
+    }
+
+    console.log('🔍 Starting polling for build:', buildId);
 
     const pollBuild = async () => {
-      if (!isActive) return;
       try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.error('❌ No auth token');
+          setError('Authentication required');
+          return;
+        }
+
         const response = await axios.get(`${API_BASE_URL}/api/master/build/${buildId}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${token}` },
+          timeout: 15000
         });
         
         const data = response.data;
+        console.log('📊 Poll response:', {
+          status: data.status,
+          phase: data.phase,
+          progress: data.progress,
+          filesCount: Object.keys(data.files || {}).length
+        });
+        
+        // Update progress
         setProgress({
           phase: data.phase || 'building',
           progress: data.progress || 0,
           message: data.message || 'Building...'
         });
-
-        if (data.logs && Array.isArray(data.logs)) {
+        
+        // Update stats
+        if (data.stats) {
+          setStats(prev => ({
+            filesGenerated: data.stats.filesGenerated || prev.filesGenerated,
+            linesOfCode: data.stats.linesOfCode || prev.linesOfCode,
+            competitorsAnalyzed: data.stats.competitorsAnalyzed || prev.competitorsAnalyzed,
+            reviewsScanned: data.stats.reviewsScanned || prev.reviewsScanned
+          }));
+        }
+        
+        // Update logs
+        if (data.logs && data.logs.length > 0) {
           setLogs(data.logs.slice(-20));
         }
-
-        if (data.stats) {
-          setStats({
-            filesGenerated: data.stats.filesGenerated || 0,
-            linesOfCode: data.stats.linesOfCode || 0,
-            competitorsAnalyzed: data.stats.competitorsAnalyzed || 0,
-            reviewsScanned: data.stats.reviewsScanned || 0
+        
+        // CRITICAL: Handle files for live preview
+        if (data.files && Object.keys(data.files).length > 0) {
+          console.log('📦 Received', Object.keys(data.files).length, 'files');
+          setGeneratedFiles(prev => {
+            const merged = { ...prev, ...data.files };
+            console.log('📂 Total files now:', Object.keys(merged).length);
+            return merged;
           });
-        }
-
-        // Update generated files for live preview
-        if (data.files) {
-          setGeneratedFiles(data.files);
-          if (!previewAvailable && Object.keys(data.files).length > 0) {
+          
+          if (!previewAvailable) {
             setPreviewAvailable(true);
-            addLog('🎨 Live preview available!');
+            addLog('🎨 Live preview is now available!');
           }
         }
-
-        // Enable preview when code generation starts (50%+)
-        if (data.progress >= 50 && !showLivePreview) {
+        
+        // Enable preview at 50%+ with files
+        if (data.progress >= 50 && !showLivePreview && Object.keys(generatedFiles).length > 0) {
           setShowLivePreview(true);
+          addLog('✨ Live preview activated!');
         }
-
+        
+        // CRITICAL: Handle completion
         if (data.status === 'completed') {
-          isActive = false;
-          const completeResults = {
-            ...data.results,
-            download_url: data.download_url || data.results?.download_url,
-            summary: data.results?.summary || {
-              files_generated: data.stats?.filesGenerated || 0,
-              lines_of_code: data.stats?.linesOfCode || 0,
-              competitors_analyzed: data.stats?.competitorsAnalyzed || 0,
-              reviews_scanned: data.stats?.reviewsScanned || 0,
-              qa_score: data.results?.summary?.qa_score || 0,
-              deployment_ready: data.results?.summary?.deployment_ready || false
+          console.log('✅ Build completed!');
+          setBuildCompleted(true);
+          setCompletedData(data.results);
+          
+          // Clear polling
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          
+          // Clear session storage
+          sessionStorage.removeItem('currentBuildId');
+          sessionStorage.removeItem('currentProjectId');
+          
+          addLog('✅ Build completed successfully!');
+          
+          // Notify parent with delay
+          setTimeout(() => {
+            if (onComplete && data.results) {
+              console.log('📤 Sending results to parent');
+              onComplete(data.results);
             }
-          };
-          setTimeout(() => onComplete(completeResults), 1000);
+          }, 1000);
         }
-
+        
+        // Handle failure
         if (data.status === 'failed') {
-          isActive = false;
+          console.error('❌ Build failed:', data.error);
           setError(data.error || 'Build failed');
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
         }
+        
       } catch (error) {
-        console.error('Poll error:', error);
-        if (error.response?.status === 404 || error.response?.status === 500) {
-          isActive = false;
-          setError(error.response?.data?.error || 'Build not found. Please try again.');
+        console.error('❌ Poll error:', error.message);
+        
+        // Only set error on critical failures
+        if (error.response?.status === 404) {
+          setError('Build not found - may have expired');
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
         }
+        // Otherwise keep polling (temporary network errors)
       }
     };
 
+    // Initial poll immediately
     pollBuild();
-    const interval = setInterval(pollBuild, 2000);
-    return () => { isActive = false; clearInterval(interval); };
-  }, [buildId, API_BASE_URL, onComplete, previewAvailable, showLivePreview]);
+    
+    // Set up interval - poll every 2 seconds for faster updates
+    pollIntervalRef.current = setInterval(pollBuild, 2000);
+    
+    // Cleanup
+    return () => {
+      if (pollIntervalRef.current) {
+        console.log('🛑 Stopping polling');
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [buildId, buildCompleted, generatedFiles, previewAvailable, showLivePreview]);
 
-  const startBuild = async () => {
+  const startNewBuild = async () => {
     try {
+      console.log('🚀 Starting new build with prompt:', prompt.substring(0, 50) + '...');
+      
       const token = localStorage.getItem('token');
       if (!token) {
         setError('Please login to build apps');
@@ -147,22 +234,51 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
           database: 'postgresql',
           targetPlatform: 'web'
         },
-        { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }}
+        { 
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        }
       );
 
-      if (response.data.error) throw new Error(response.data.error);
+      if (response.data.error) {
+        throw new Error(response.data.error);
+      }
+      
       const { build_id, project_id } = response.data;
+      console.log('✅ Build started:', { build_id, project_id });
+      
       setBuildId(build_id);
       setProjectId(project_id);
+      
+      // Save to session storage
+      sessionStorage.setItem('currentBuildId', build_id);
+      sessionStorage.setItem('currentProjectId', project_id);
+      
       addLog('🚀 Build started successfully!');
+      setProgress({
+        phase: 'research',
+        progress: 5,
+        message: 'Starting market research...'
+      });
+      
     } catch (error) {
       console.error('❌ Build start failed:', error);
-      setError(error.response?.data?.error || error.message || 'Failed to start build');
+      const errorMsg = error.response?.data?.error || error.message;
+      setError(errorMsg);
+      addLog(`❌ Error: ${errorMsg}`);
     }
   };
 
   const addLog = (message) => {
-    setLogs(prev => [...prev, { message, timestamp: new Date().toISOString() }].slice(-20));
+    const log = {
+      message,
+      timestamp: new Date().toISOString()
+    };
+    setLogs(prev => [...prev, log].slice(-20));
+    console.log('📝 Log:', message);
   };
 
   const extractProjectName = (prompt) => {
@@ -171,6 +287,9 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
   };
 
   const handleRetry = () => {
+    console.log('🔄 Retrying build...');
+    
+    // Reset all state
     setError(null);
     setProgress({ phase: 'initializing', progress: 0, message: 'Retrying...' });
     setStats({ filesGenerated: 0, linesOfCode: 0, competitorsAnalyzed: 0, reviewsScanned: 0 });
@@ -180,7 +299,21 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
     setGeneratedFiles({});
     setShowLivePreview(false);
     setPreviewAvailable(false);
-    startBuild();
+    setBuildCompleted(false);
+    setCompletedData(null);
+    
+    // Clear session
+    sessionStorage.removeItem('currentBuildId');
+    sessionStorage.removeItem('currentProjectId');
+    
+    // Reset refs
+    buildStartedRef.current = false;
+    
+    // Start new build
+    setTimeout(() => {
+      startNewBuild();
+      buildStartedRef.current = true;
+    }, 500);
   };
 
   const phases = [
@@ -195,6 +328,7 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
   const minutes = Math.floor(elapsedTime / 60);
   const seconds = elapsedTime % 60;
 
+  // Show error state
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 py-8">
@@ -219,6 +353,21 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
               Go Back
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show initialization state
+  if (!buildId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-8">
+        <div className="text-center">
+          <div className="relative inline-block mb-6">
+            <div className="w-20 h-20 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Initializing Build...</h2>
+          <p className="text-slate-400">Setting up AI agents</p>
         </div>
       </div>
     );
@@ -408,7 +557,7 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
               )}
             </div>
 
-            {showLivePreview && previewAvailable ? (
+            {showLivePreview && previewAvailable && Object.keys(generatedFiles).length > 0 ? (
               <LiveAppPreview 
                 buildId={buildId}
                 files={generatedFiles}
@@ -457,7 +606,7 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>AI is researching your market and optimizing code</span>
+                  <span>Page refresh won't lose your progress</span>
                 </li>
               </ul>
             </div>
