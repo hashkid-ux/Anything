@@ -100,6 +100,14 @@ router.get('/:buildId/files', (req, res) => {
     const buildData = activeBuilds.get(buildId);
     
     if (!fileCache && !buildData) {
+      const project = ProjectService.findById(buildId);
+  if (project?.generatedFiles) {
+    return {
+      files: project.generatedFiles,
+      stats: project.fileStats,
+      lastUpdated: project.lastFileUpdate
+    };
+  }
       return res.status(404).json({
         error: 'Build not found',
         buildId,

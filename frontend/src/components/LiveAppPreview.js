@@ -107,6 +107,12 @@ function LiveAppPreview({ buildId, files, progress }) {
       }
     }
     
+    // **VALIDATE: Check for contamination**
+  if (appJs.includes('｜') || appJs.includes('▁')) {
+    console.error('⚠️ Detected contaminated code, using fallback');
+    appJs = getDefaultApp();
+  }
+
     if (!appJs) {
       console.warn('⚠️ No App.js found, using default');
       appJs = getDefaultApp();
@@ -116,6 +122,18 @@ function LiveAppPreview({ buildId, files, progress }) {
     
     // Extract components
     const components = extractComponents(files);
+    
+     // **VALIDATE: Clean each component**
+  const cleanComponents = components.map(comp => {
+    const cleaned = sanitizeCode(comp);
+    if (!cleaned || cleaned.includes('｜')) {
+      console.warn('⚠️ Skipping contaminated component');
+      return '';
+    }
+    return cleaned;
+  }).filter(Boolean);
+
+
     console.log(`📦 Extracted ${components.length} components`);
     
     // Build HTML
@@ -272,32 +290,35 @@ function LiveAppPreview({ buildId, files, progress }) {
   };
 
   const sanitizeCode = (code) => {
-    if (!code) return '';
+  if (!code) return '';
+  
+  try {
+    let sanitized = code
+      // Remove all import statements
+      .replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '')
+      .replace(/import\s+['"].*?['"];?\s*/g, '')
+      // Remove export default
+      .replace(/export\s+default\s+/g, '')
+      // Remove export keyword but keep const/function
+      .replace(/export\s+(const|function|class)\s+/g, '$1 ')
+      // Remove any remaining exports
+      .replace(/export\s+\{[^}]*\};?\s*/g, '')
+      // **FIX: Remove tokenization artifacts**
+      .replace(/<[｜|][^>]*[｜|]>/g, '')
+      .replace(/[｜|]begin[_▁]of[_▁]sentence[｜|]/gi, '')
+      .replace(/[｜|]end[_▁]of[_▁]turn[｜|]/gi, '')
+      .replace(/[｜|][^｜|]*[｜|]/g, '')
+      // Remove markdown artifacts
+      .replace(/```(?:javascript|jsx|js)?\n?/g, '')
+      .replace(/```\n?$/g, '')
+      .trim();
     
-    try {
-      let sanitized = code
-        // Remove all import statements
-        .replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '')
-        .replace(/import\s+['"].*?['"];?\s*/g, '')
-        // Remove export default
-        .replace(/export\s+default\s+/g, '')
-        // Remove export keyword but keep const/function
-        .replace(/export\s+(const|function|class)\s+/g, '$1 ')
-        // Remove any remaining exports
-        .replace(/export\s+\{[^}]*\};?\s*/g, '')
-        .trim();
-      
-      // Ensure function components are properly declared
-      if (sanitized.includes('function') && !sanitized.includes('function App')) {
-        // Already has proper function declarations
-      }
-      
-      return sanitized;
-    } catch (error) {
-      console.error('Error sanitizing code:', error);
-      return '';
-    }
-  };
+    return sanitized;
+  } catch (error) {
+    console.error('Error sanitizing code:', error);
+    return '';
+  }
+};
 
   const getDefaultApp = () => {
     return `function App() {

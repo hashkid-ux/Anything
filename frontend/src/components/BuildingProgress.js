@@ -1,24 +1,23 @@
-// frontend/src/components/BuildingProgress.js
-// FULLY FIXED - Build starts properly + Progress updates correctly
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Loader, Check, Brain, Code, Database, Rocket, FileCode, 
   AlertCircle, RefreshCw, Zap, TrendingUp, BarChart3, CheckCircle2,
-  Eye, Monitor, Play
+  Eye, Monitor, Play, ArrowLeft, XCircle, Clock
 } from 'lucide-react';
-import axios from 'axios';
-import LiveAppPreview from './LiveAppPreview';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
+const API_BASE_URL = 'http://localhost:5000';
 
-function BuildingProgress({ prompt, onComplete, onRetry }) {
+function BuildingProgress({ prompt, onComplete, onCancel }) {
+  // Core state
+  const [buildState, setBuildState] = useState('INITIALIZING'); // INITIALIZING, STARTING, BUILDING, COMPLETED, FAILED
   const [buildId, setBuildId] = useState(null);
   const [projectId, setProjectId] = useState(null);
+  
+  // Progress tracking
   const [progress, setProgress] = useState({ 
     phase: 'initializing', 
     progress: 0, 
-    message: 'Starting build...' 
+    message: 'Preparing to start build...' 
   });
   const [stats, setStats] = useState({
     filesGenerated: 0,
@@ -26,296 +25,431 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
     competitorsAnalyzed: 0,
     reviewsScanned: 0
   });
+  
+  // UI state
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState(null);
   const [startTime] = useState(Date.now());
   const [elapsedTime, setElapsedTime] = useState(0);
   
-  // Live Preview State
+  // Live Preview
   const [generatedFiles, setGeneratedFiles] = useState({});
   const [showLivePreview, setShowLivePreview] = useState(false);
   const [previewAvailable, setPreviewAvailable] = useState(false);
-  const [buildCompleted, setBuildCompleted] = useState(false);
-  const [completedData, setCompletedData] = useState(null);
   
+  // Refs for cleanup and control
   const pollIntervalRef = useRef(null);
-  const buildStartedRef = useRef(false);
+  const mountedRef = useRef(true);
+  const buildInitiatedRef = useRef(false);
 
-  // CRITICAL FIX: Check for existing build OR start new build
+  // ============================================
+  // LIFECYCLE: Component mount/unmount
+  // ============================================
   useEffect(() => {
-    const initBuild = async () => {
-      // Check session storage for existing build
-      const savedBuildId = sessionStorage.getItem('currentBuildId');
-      const savedProjectId = sessionStorage.getItem('currentProjectId');
-      
-      if (savedBuildId && savedProjectId && !buildStartedRef.current) {
-        console.log('🔄 Resuming existing build:', savedBuildId);
-        setBuildId(savedBuildId);
-        setProjectId(savedProjectId);
-        buildStartedRef.current = true;
-        addLog('🔄 Resuming build from session...');
-      } else if (!buildStartedRef.current) {
-        console.log('🚀 Starting new build...');
-        await startNewBuild();
-        buildStartedRef.current = true;
-      }
+    mountedRef.current = true;
+    
+    return () => {
+      mountedRef.current = false;
+      cleanup();
     };
+  }, []);
 
-    initBuild();
-  }, []); // Only run once
+  // ============================================
+  // MAIN: Build initialization on mount
+  // ============================================
+  useEffect(() => {
+    if (!buildInitiatedRef.current && buildState === 'INITIALIZING') {
+      buildInitiatedRef.current = true;
+      initializeBuild();
+    }
+  }, [buildState]);
 
-  // Elapsed time counter
+  // ============================================
+  // POLLING: Start when build ID is available
+  // ============================================
+  useEffect(() => {
+    if (buildId && buildState === 'BUILDING') {
+      startPolling();
+    }
+    
+    return () => {
+      stopPolling();
+    };
+  }, [buildId, buildState]);
+
+  // ============================================
+  // TIMER: Elapsed time counter
+  // ============================================
   useEffect(() => {
     const timer = setInterval(() => {
-      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+      if (mountedRef.current && buildState === 'BUILDING') {
+        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+      }
     }, 1000);
+    
     return () => clearInterval(timer);
-  }, [startTime]);
+  }, [startTime, buildState]);
 
-  // CRITICAL FIX: Polling with proper cleanup
-  useEffect(() => {
-    if (!buildId || buildCompleted) {
-      return;
-    }
-
-    console.log('🔍 Starting polling for build:', buildId);
-
-    const pollBuild = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          console.error('❌ No auth token');
-          setError('Authentication required');
-          return;
-        }
-
-        const response = await axios.get(`${API_BASE_URL}/api/master/build/${buildId}`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-          timeout: 15000
-        });
-        
-        const data = response.data;
-        console.log('📊 Poll response:', {
-          status: data.status,
-          phase: data.phase,
-          progress: data.progress,
-          filesCount: Object.keys(data.files || {}).length
-        });
-        
-        // Update progress
-        setProgress({
-          phase: data.phase || 'building',
-          progress: data.progress || 0,
-          message: data.message || 'Building...'
-        });
-        
-        // Update stats
-        if (data.stats) {
-          setStats(prev => ({
-            filesGenerated: data.stats.filesGenerated || prev.filesGenerated,
-            linesOfCode: data.stats.linesOfCode || prev.linesOfCode,
-            competitorsAnalyzed: data.stats.competitorsAnalyzed || prev.competitorsAnalyzed,
-            reviewsScanned: data.stats.reviewsScanned || prev.reviewsScanned
-          }));
-        }
-        
-        // Update logs
-        if (data.logs && data.logs.length > 0) {
-          setLogs(data.logs.slice(-20));
-        }
-        
-        // CRITICAL: Handle files for live preview
-        if (data.files && Object.keys(data.files).length > 0) {
-          console.log('📦 Received', Object.keys(data.files).length, 'files');
-          setGeneratedFiles(prev => {
-            const merged = { ...prev, ...data.files };
-            console.log('📂 Total files now:', Object.keys(merged).length);
-            return merged;
-          });
-          
-          if (!previewAvailable) {
-            setPreviewAvailable(true);
-            addLog('🎨 Live preview is now available!');
-          }
-        }
-        
-        // Enable preview at 50%+ with files
-        if (data.progress >= 50 && !showLivePreview && Object.keys(generatedFiles).length > 0) {
-          setShowLivePreview(true);
-          addLog('✨ Live preview activated!');
-        }
-        
-        // CRITICAL: Handle completion
-        if (data.status === 'completed') {
-          console.log('✅ Build completed!');
-          setBuildCompleted(true);
-          setCompletedData(data.results);
-          
-          // Clear polling
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-          }
-          
-          // Clear session storage
-          sessionStorage.removeItem('currentBuildId');
-          sessionStorage.removeItem('currentProjectId');
-          
-          addLog('✅ Build completed successfully!');
-          
-          // Notify parent with delay
-          setTimeout(() => {
-            if (onComplete && data.results) {
-              console.log('📤 Sending results to parent');
-              onComplete(data.results);
-            }
-          }, 1000);
-        }
-        
-        // Handle failure
-        if (data.status === 'failed') {
-          console.error('❌ Build failed:', data.error);
-          setError(data.error || 'Build failed');
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-          }
-        }
-        
-      } catch (error) {
-        console.error('❌ Poll error:', error.message);
-        
-        // Only set error on critical failures
-        if (error.response?.status === 404) {
-          setError('Build not found - may have expired');
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-          }
-        }
-        // Otherwise keep polling (temporary network errors)
-      }
-    };
-
-    // Initial poll immediately
-    pollBuild();
-    
-    // Set up interval - poll every 2 seconds for faster updates
-    pollIntervalRef.current = setInterval(pollBuild, 2000);
-    
-    // Cleanup
-    return () => {
-      if (pollIntervalRef.current) {
-        console.log('🛑 Stopping polling');
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-    };
-  }, [buildId, buildCompleted, generatedFiles, previewAvailable, showLivePreview]);
-
-  const startNewBuild = async () => {
+  // ============================================
+  // FUNCTION: Initialize build
+  // ============================================
+  const initializeBuild = async () => {
     try {
-      console.log('🚀 Starting new build with prompt:', prompt.substring(0, 50) + '...');
+      addLog('🚀 Starting new build...', 'info');
+      setBuildState('STARTING');
       
       const token = localStorage.getItem('token');
       if (!token) {
-        setError('Please login to build apps');
-        return;
+        throw new Error('Authentication required. Please login.');
       }
 
-      const response = await axios.post(
-        `${API_BASE_URL}/api/master/build`,
-        {
-          projectName: extractProjectName(prompt),
+      // Extract project name from prompt
+      const projectName = extractProjectName(prompt);
+      
+      addLog(`📝 Project: ${projectName}`, 'info');
+      addLog('🔧 Configuring build parameters...', 'info');
+
+      // Call backend to start build
+      const response = await fetch(`${API_BASE_URL}/api/master/build`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          projectName,
           description: prompt,
           targetCountry: 'Global',
           features: [],
           framework: 'react',
           database: 'postgresql',
           targetPlatform: 'web'
-        },
-        { 
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 30000
-        }
-      );
+        })
+      });
 
-      if (response.data.error) {
-        throw new Error(response.data.error);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.build_id || !data.project_id) {
+        throw new Error('Invalid response from server - missing build identifiers');
+      }
+
+      // SUCCESS - Build started
+      if (mountedRef.current) {
+        setBuildId(data.build_id);
+        setProjectId(data.project_id);
+        setBuildState('BUILDING');
+        
+        // Save to session storage for recovery
+        sessionStorage.setItem('currentBuildId', data.build_id);
+        sessionStorage.setItem('currentProjectId', data.project_id);
+        
+        addLog('✅ Build started successfully!', 'success');
+        addLog(`🆔 Build ID: ${data.build_id.substring(0, 16)}...`, 'info');
+        
+        setProgress({
+          phase: 'research',
+          progress: 5,
+          message: '🔍 Starting market research...'
+        });
       }
       
-      const { build_id, project_id } = response.data;
-      console.log('✅ Build started:', { build_id, project_id });
-      
-      setBuildId(build_id);
-      setProjectId(project_id);
-      
-      // Save to session storage
-      sessionStorage.setItem('currentBuildId', build_id);
-      sessionStorage.setItem('currentProjectId', project_id);
-      
-      addLog('🚀 Build started successfully!');
-      setProgress({
-        phase: 'research',
-        progress: 5,
-        message: 'Starting market research...'
-      });
-      
     } catch (error) {
-      console.error('❌ Build start failed:', error);
-      const errorMsg = error.response?.data?.error || error.message;
-      setError(errorMsg);
-      addLog(`❌ Error: ${errorMsg}`);
+      console.error('❌ Build initialization failed:', error);
+      
+      if (mountedRef.current) {
+        setBuildState('FAILED');
+        setError(error.message);
+        addLog(`❌ Failed to start: ${error.message}`, 'error');
+      }
     }
   };
 
-  const addLog = (message) => {
-    const log = {
-      message,
-      timestamp: new Date().toISOString()
-    };
-    setLogs(prev => [...prev, log].slice(-20));
-    console.log('📝 Log:', message);
+  // ============================================
+  // FUNCTION: Start polling for progress
+  // ============================================
+  const startPolling = () => {
+    if (pollIntervalRef.current) {
+      return; // Already polling
+    }
+
+    addLog('📡 Starting live updates...', 'info');
+    
+    // Initial poll immediately
+    pollBuildProgress();
+    
+    // Then poll every 2 seconds
+    pollIntervalRef.current = setInterval(() => {
+      pollBuildProgress();
+    }, 2000);
   };
 
+  // ============================================
+  // FUNCTION: Stop polling
+  // ============================================
+  const stopPolling = () => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+      addLog('📡 Stopped live updates', 'info');
+    }
+  };
+
+  // ============================================
+  // FUNCTION: Poll build progress
+  // ============================================
+  const pollBuildProgress = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch(`${API_BASE_URL}/api/master/build/${buildId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Build not found - may have expired');
+        }
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (!mountedRef.current) return;
+
+      // Update progress
+      setProgress({
+        phase: data.phase || 'building',
+        progress: data.progress || 0,
+        message: data.message || 'Building...'
+      });
+
+      // Update stats
+      if (data.stats) {
+        setStats(prev => ({
+          filesGenerated: data.stats.filesGenerated || prev.filesGenerated,
+          linesOfCode: data.stats.linesOfCode || prev.linesOfCode,
+          competitorsAnalyzed: data.stats.competitorsAnalyzed || prev.competitorsAnalyzed,
+          reviewsScanned: data.stats.reviewsScanned || prev.reviewsScanned
+        }));
+      }
+
+      // Update files for preview
+      if (data.files && Object.keys(data.files).length > 0) {
+        setGeneratedFiles(prev => {
+          const merged = { ...prev, ...data.files };
+          return merged;
+        });
+        
+        if (!previewAvailable) {
+          setPreviewAvailable(true);
+          addLog('🎨 Live preview is now available!', 'success');
+        }
+      }
+
+      // Enable preview at 50%+
+      if (data.progress >= 50 && !showLivePreview && Object.keys(generatedFiles).length > 0) {
+        setShowLivePreview(true);
+        addLog('✨ Live preview activated!', 'success');
+      }
+
+      // Handle completion
+      if (data.status === 'completed') {
+        stopPolling();
+        setBuildState('COMPLETED');
+        addLog('🎉 Build completed successfully!', 'success');
+        
+        // Clear session storage
+        sessionStorage.removeItem('currentBuildId');
+        sessionStorage.removeItem('currentProjectId');
+        
+        // Notify parent with delay for UI update
+        setTimeout(() => {
+          if (mountedRef.current && onComplete && data.results) {
+            onComplete(data.results);
+          }
+        }, 1000);
+      }
+
+      // Handle failure
+      if (data.status === 'failed') {
+        stopPolling();
+        setBuildState('FAILED');
+        setError(data.error || 'Build failed unexpectedly');
+        addLog(`❌ Build failed: ${data.error}`, 'error');
+      }
+
+    } catch (error) {
+      // Only log errors, don't stop polling for network issues
+      console.error('Poll error:', error.message);
+    }
+  };
+
+  // ============================================
+  // FUNCTION: Cleanup
+  // ============================================
+  const cleanup = () => {
+    stopPolling();
+    sessionStorage.removeItem('currentBuildId');
+    sessionStorage.removeItem('currentProjectId');
+  };
+
+  // ============================================
+  // FUNCTION: Handle retry
+  // ============================================
+  const handleRetry = useCallback(() => {
+    // Full reset
+    cleanup();
+    
+    setBuildState('INITIALIZING');
+    setBuildId(null);
+    setProjectId(null);
+    setError(null);
+    setProgress({ phase: 'initializing', progress: 0, message: 'Preparing to retry...' });
+    setStats({ filesGenerated: 0, linesOfCode: 0, competitorsAnalyzed: 0, reviewsScanned: 0 });
+    setLogs([]);
+    setGeneratedFiles({});
+    setShowLivePreview(false);
+    setPreviewAvailable(false);
+    
+    buildInitiatedRef.current = false;
+    
+    // Reinitialize
+    setTimeout(() => {
+      if (mountedRef.current) {
+        initializeBuild();
+      }
+    }, 500);
+  }, [prompt]);
+
+  // ============================================
+  // FUNCTION: Handle cancel/back
+  // ============================================
+  const handleCancel = useCallback(() => {
+    cleanup();
+    
+    if (onCancel) {
+      onCancel();
+    }
+  }, [onCancel]);
+
+  // ============================================
+  // HELPER: Add log
+  // ============================================
+  const addLog = (message, type = 'info') => {
+    const log = {
+      message,
+      type,
+      timestamp: new Date().toISOString()
+    };
+    
+    setLogs(prev => [...prev, log].slice(-50));
+  };
+
+  // ============================================
+  // HELPER: Extract project name
+  // ============================================
   const extractProjectName = (prompt) => {
     const words = prompt.split(' ').slice(0, 5).join(' ');
     return words.length > 50 ? words.substring(0, 50) : words;
   };
 
-  const handleRetry = () => {
-    console.log('🔄 Retrying build...');
-    
-    // Reset all state
-    setError(null);
-    setProgress({ phase: 'initializing', progress: 0, message: 'Retrying...' });
-    setStats({ filesGenerated: 0, linesOfCode: 0, competitorsAnalyzed: 0, reviewsScanned: 0 });
-    setLogs([]);
-    setBuildId(null);
-    setProjectId(null);
-    setGeneratedFiles({});
-    setShowLivePreview(false);
-    setPreviewAvailable(false);
-    setBuildCompleted(false);
-    setCompletedData(null);
-    
-    // Clear session
-    sessionStorage.removeItem('currentBuildId');
-    sessionStorage.removeItem('currentProjectId');
-    
-    // Reset refs
-    buildStartedRef.current = false;
-    
-    // Start new build
-    setTimeout(() => {
-      startNewBuild();
-      buildStartedRef.current = true;
-    }, 500);
-  };
+  // ============================================
+  // RENDER: Error state
+  // ============================================
+  if (buildState === 'FAILED' && error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-8">
+        <div className="max-w-md w-full bg-slate-900/50 backdrop-blur-2xl border border-red-500/30 rounded-2xl p-8 text-center">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-red-500/10 border border-red-500/30 rounded-full mb-6">
+            <XCircle className="w-10 h-10 text-red-400" />
+          </div>
+          
+          <h2 className="text-2xl font-bold text-white mb-4">Build Failed</h2>
+          <p className="text-red-300 mb-6 leading-relaxed">{error}</p>
+          
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={handleRetry}
+              className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold rounded-xl transition-all hover:scale-105 flex items-center justify-center gap-2"
+            >
+              <RefreshCw className="w-5 h-5" />
+              Retry Build
+            </button>
+            
+            <button
+              onClick={handleCancel}
+              className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              Go Back
+            </button>
+          </div>
+          
+          {/* Debug info */}
+          <details className="mt-6 text-left">
+            <summary className="text-xs text-slate-400 cursor-pointer mb-2">Debug Info</summary>
+            <pre className="text-xs text-slate-500 bg-black/30 p-3 rounded-lg overflow-auto">
+              {JSON.stringify({ buildId, projectId, buildState, error }, null, 2)}
+            </pre>
+          </details>
+        </div>
+      </div>
+    );
+  }
 
+  // ============================================
+  // RENDER: Initializing/Starting state
+  // ============================================
+  if (buildState === 'INITIALIZING' || buildState === 'STARTING') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-8">
+        <div className="text-center max-w-md">
+          <div className="relative inline-block mb-6">
+            <div className="w-20 h-20 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Rocket className="w-8 h-8 text-purple-500" />
+            </div>
+          </div>
+          
+          <h2 className="text-2xl font-bold text-white mb-2">
+            {buildState === 'INITIALIZING' ? 'Initializing...' : 'Starting Build...'}
+          </h2>
+          <p className="text-slate-400 mb-4">
+            {buildState === 'INITIALIZING' 
+              ? 'Setting up AI agents and build environment'
+              : 'Connecting to servers and preparing workspace'}
+          </p>
+          
+          {/* Recent logs */}
+          <div className="bg-black/30 rounded-lg p-4 max-h-40 overflow-y-auto">
+            {logs.slice(-5).map((log, i) => (
+              <div key={i} className="text-xs text-slate-400 mb-1 font-mono">
+                {log.message}
+              </div>
+            ))}
+          </div>
+          
+          {/* Cancel button */}
+          <button
+            onClick={handleCancel}
+            className="mt-6 px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all text-sm"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================
+  // RENDER: Main building interface
+  // ============================================
   const phases = [
     { id: 'research', name: 'Market Research', icon: Brain, range: [0, 30], color: 'from-purple-500 to-pink-500' },
     { id: 'strategy', name: 'Strategy', icon: Rocket, range: [30, 50], color: 'from-blue-500 to-cyan-500' },
@@ -328,60 +462,41 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
   const minutes = Math.floor(elapsedTime / 60);
   const seconds = elapsedTime % 60;
 
-  // Show error state
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4 py-8">
-        <div className="max-w-md w-full bg-slate-900/50 backdrop-blur-2xl border border-red-500/30 rounded-2xl p-8 text-center animate-scale-in">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-red-500/10 border border-red-500/30 rounded-full mb-6 animate-pulse">
-            <AlertCircle className="w-10 h-10 text-red-400" />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-4">Build Failed</h2>
-          <p className="text-red-300 mb-6 leading-relaxed">{error}</p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={handleRetry}
-              className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold rounded-xl transition-all hover:scale-105 flex items-center justify-center gap-2"
-            >
-              <RefreshCw className="w-5 h-5" />
-              Retry Build
-            </button>
-            <button
-              onClick={() => window.location.href = '/'}
-              className="flex-1 px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition-all"
-            >
-              Go Back
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Show initialization state
-  if (!buildId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4 py-8">
-        <div className="text-center">
-          <div className="relative inline-block mb-6">
-            <div className="w-20 h-20 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Initializing Build...</h2>
-          <p className="text-slate-400">Setting up AI agents</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen px-4 py-8 sm:py-12">
       <div className="max-w-7xl mx-auto">
-        {/* Header with Progress Circle */}
+        {/* Header with back button */}
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={handleCancel}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 rounded-lg transition-all"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="text-sm">Back</span>
+          </button>
+          
+          <div className="flex items-center gap-2 text-slate-400 text-sm">
+            <Clock className="w-4 h-4" />
+            <span>{minutes}:{String(seconds).padStart(2, '0')}</span>
+          </div>
+        </div>
+
+        {/* Progress Circle */}
         <div className="text-center mb-8 sm:mb-12">
           <div className="relative inline-block mb-6">
             <svg className="w-32 h-32 sm:w-40 sm:h-40 -rotate-90">
               <circle cx="50%" cy="50%" r="45%" stroke="rgba(255,255,255,0.1)" strokeWidth="8" fill="none" />
-              <circle cx="50%" cy="50%" r="45%" stroke="url(#progressGradient)" strokeWidth="8" fill="none" strokeDasharray={`${(progress.progress / 100) * 283} 283`} strokeLinecap="round" className="transition-all duration-1000" />
+              <circle 
+                cx="50%" 
+                cy="50%" 
+                r="45%" 
+                stroke="url(#progressGradient)" 
+                strokeWidth="8" 
+                fill="none" 
+                strokeDasharray={`${(progress.progress / 100) * 283} 283`} 
+                strokeLinecap="round" 
+                className="transition-all duration-1000" 
+              />
               <defs>
                 <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#3b82f6" />
@@ -398,13 +513,9 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
 
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-3">Building Your App</h1>
           <p className="text-purple-300 text-base sm:text-lg mb-2">{progress.message}</p>
-          <div className="flex items-center justify-center gap-2 text-slate-400 text-sm">
-            <Zap className="w-4 h-4 text-yellow-400 animate-pulse" />
-            <span>{minutes}:{String(seconds).padStart(2, '0')} elapsed</span>
-          </div>
 
           {previewAvailable && (
-            <div className="mt-4 inline-flex items-center gap-2 bg-green-500/10 border border-green-500/30 px-4 py-2 rounded-full animate-scale-in">
+            <div className="mt-4 inline-flex items-center gap-2 bg-green-500/10 border border-green-500/30 px-4 py-2 rounded-full animate-pulse">
               <Play className="w-4 h-4 text-green-400" />
               <span className="text-green-300 font-medium text-sm">Live Preview Available!</span>
             </div>
@@ -443,7 +554,7 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
           />
         </div>
 
-        {/* Main Content: Phases + Live Preview */}
+        {/* Main Content: Phases + Preview */}
         <div className="grid lg:grid-cols-2 gap-6">
           {/* LEFT: Build Phases */}
           <div className="space-y-3 sm:space-y-4">
@@ -451,6 +562,7 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
               <Rocket className="w-5 h-5 text-purple-400" />
               Build Progress
             </h3>
+            
             {phases.map((phase, index) => {
               const PhaseIcon = phase.icon;
               const isActive = currentPhaseIndex === index;
@@ -471,16 +583,13 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
                       isCompleted 
                         ? 'bg-gradient-to-br from-green-500 to-emerald-500 scale-110' 
                         : isActive 
-                        ? `bg-gradient-to-br ${phase.color} scale-110 animate-pulse` 
+                        ? `bg-gradient-to-br ${phase.color} scale-110` 
                         : 'bg-white/10'
                     }`}>
                       {isCompleted ? (
                         <CheckCircle2 className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
                       ) : (
-                        <PhaseIcon className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
-                      )}
-                      {isActive && (
-                        <div className={`absolute inset-0 bg-gradient-to-br ${phase.color} rounded-xl blur-xl opacity-50 animate-pulse`}></div>
+                        <PhaseIcon className={`w-6 h-6 sm:w-7 sm:h-7 text-white ${isActive ? 'animate-pulse' : ''}`} />
                       )}
                     </div>
 
@@ -523,15 +632,19 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
                   <span className="text-xs text-green-400 font-medium">LIVE</span>
                 </div>
               </div>
-              <div className="p-3 max-h-[200px] overflow-y-auto font-mono text-xs scrollbar-thin">
+              <div className="p-3 max-h-[200px] overflow-y-auto font-mono text-xs">
                 {logs.length === 0 ? (
                   <div className="text-center py-6">
                     <Loader className="w-6 h-6 animate-spin mx-auto mb-2 text-purple-500" />
                     <p className="text-slate-500 text-xs">Initializing...</p>
                   </div>
                 ) : (
-                  logs.slice().reverse().map((log, i) => (
-                    <div key={i} className="text-slate-300 mb-1 text-xs">
+                  logs.slice().reverse().slice(0, 10).map((log, i) => (
+                    <div key={i} className={`mb-1 ${
+                      log.type === 'error' ? 'text-red-400' :
+                      log.type === 'success' ? 'text-green-400' :
+                      'text-slate-300'
+                    }`}>
                       <span className="text-slate-500 mr-2">
                         {new Date(log.timestamp).toLocaleTimeString()}
                       </span>
@@ -543,7 +656,7 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
             </div>
           </div>
 
-          {/* RIGHT: LIVE PREVIEW */}
+          {/* RIGHT: Live Preview Placeholder */}
           <div className="lg:sticky lg:top-24">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -557,58 +670,18 @@ function BuildingProgress({ prompt, onComplete, onRetry }) {
               )}
             </div>
 
-            {showLivePreview && previewAvailable && Object.keys(generatedFiles).length > 0 ? (
-              <LiveAppPreview 
-                buildId={buildId}
-                files={generatedFiles}
-                progress={progress}
-              />
-            ) : (
-              <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-12 text-center">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 opacity-50">
-                  <Monitor className="w-10 h-10 text-white" />
-                </div>
-                <h4 className="text-lg font-semibold text-white mb-2">Preview Coming Soon</h4>
-                <p className="text-slate-400 text-sm mb-4">
-                  Live preview will appear when code generation starts (50%+)
-                </p>
-                <div className="inline-flex items-center gap-2 text-xs text-slate-500">
-                  <Loader className="w-4 h-4 animate-spin" />
-                  <span>Generating frontend code...</span>
-                </div>
+            <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-12 text-center">
+              <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 opacity-50">
+                <Monitor className="w-10 h-10 text-white" />
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Tips Section */}
-        <div className="mt-8 sm:mt-12 bg-gradient-to-br from-blue-500/10 to-purple-500/10 backdrop-blur-xl border border-blue-500/20 rounded-2xl p-6 sm:p-8">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl flex items-center justify-center">
-                <Zap className="w-6 h-6 text-white" />
+              <h4 className="text-lg font-semibold text-white mb-2">Preview Coming Soon</h4>
+              <p className="text-slate-400 text-sm mb-4">
+                Live preview will appear when code generation starts (50%+)
+              </p>
+              <div className="inline-flex items-center gap-2 text-xs text-slate-500">
+                <Loader className="w-4 h-4 animate-spin" />
+                <span>Generating code...</span>
               </div>
-            </div>
-            <div className="flex-1">
-              <h4 className="text-blue-300 font-semibold text-base sm:text-lg mb-3">💡 While you wait...</h4>
-              <ul className="text-blue-200 text-sm space-y-2">
-                <li className="flex items-start gap-2">
-                  <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Watch your app being built in real-time</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Test the UI interactively as it's generated</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Preview works on desktop, tablet, and mobile</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Page refresh won't lose your progress</span>
-                </li>
-              </ul>
             </div>
           </div>
         </div>

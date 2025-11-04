@@ -338,9 +338,16 @@ Return ONLY the complete JavaScript code, no markdown.`;
     });
 
     let code = response.content[0].text;
-    code = code.replace(/```(?:javascript|jsx|js)?\n?/g, '').replace(/```\n?$/g, '');
-    
-    return code.trim();
+    // **AGGRESSIVE CLEANING**
+  code = code
+    .replace(/```(?:javascript|jsx|js)?\n?/g, '')
+    .replace(/```\n?$/g, '')
+    .replace(/<[｜|][^>]*[｜|]>/g, '')
+    .replace(/[｜|]begin[_▁]of[_▁]sentence[｜|]/gi, '')
+    .replace(/[｜|]end[_▁]of[_▁]turn[｜|]/gi, '')
+    .replace(/[｜|][^｜|]*[｜|]/g, '');
+  
+  return code.trim();
   }
 
   async generateComponent(componentConfig, projectData) {

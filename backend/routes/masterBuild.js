@@ -11,6 +11,63 @@ const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 
+
+// ==========================================
+// HELPER FUNCTIONS
+// ==========================================
+
+/**
+ * Calculate total size of files
+ */
+function calculateTotalSize(filesOrPhase3) {
+  if (!filesOrPhase3) return 0;
+  
+  // If it's phase3 object with frontend/backend
+  if (filesOrPhase3.frontend || filesOrPhase3.backend) {
+    const frontendSize = calculateTotalSize(filesOrPhase3.frontend?.files || {});
+    const backendSize = calculateTotalSize(filesOrPhase3.backend?.files || {});
+    return frontendSize + backendSize;
+  }
+  
+  // If it's a files object
+  if (typeof filesOrPhase3 === 'object') {
+    return Object.values(filesOrPhase3).reduce((total, content) => {
+      if (!content) return total;
+      if (typeof content === 'string') return total + content.length;
+      if (typeof content === 'object') return total + JSON.stringify(content).length;
+      return total;
+    }, 0);
+  }
+  
+  return 0;
+}
+
+/**
+ * Merge files from multiple sources
+ */
+function mergeFiles(...sources) {
+  const merged = {};
+  for (const source of sources) {
+    if (source && typeof source === 'object') {
+      Object.assign(merged, source);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Extract file counts from phase3
+ */
+function extractFileCounts(phase3) {
+  if (!phase3) return { frontend: 0, backend: 0, database: 0 };
+  
+  return {
+    frontend: Object.keys(phase3.frontend?.files || {}).length,
+    backend: Object.keys(phase3.backend?.files || {}).length,
+    database: phase3.database?.migrations?.length || 0
+  };
+}
+
 // ==========================================
 // ACTIVE BUILDS & FILES CACHE
 // ==========================================
@@ -862,9 +919,21 @@ async function runUltraBuildProcess(buildId, projectData, tier) {
     // ==========================================
     // BUILD COMPLETE
     // ==========================================
+
+    // CRITICAL FIX: Merge all files properly
+    const allFiles = mergeFiles(
+      phase3.frontend?.files,
+      phase3.backend?.files
+    );
+    
+    const fileCounts = extractFileCounts(phase3);
+    const totalSize = calculateTotalSize(phase3);
+
+
     const finalResults = {
       success: true,
       build_id: buildId,
+      project_id: projectData.projectId,
       project_name: projectData.projectName,
       phases: {
         phase1: {
@@ -908,7 +977,21 @@ async function runUltraBuildProcess(buildId, projectData, tier) {
       timestamp: new Date().toISOString()
     };
 
-    // Update project in database
+
+    // Send completion notification
+    await NotificationService.create(projectData.userId, {
+      title: 'Build Complete! 🎉',
+      message: `"${projectData.projectName}" is ready! ${filesGenerated} files, ${linesOfCode.toLocaleString()} lines of code.`,
+      type: 'success',
+      actionUrl: `/projects/${projectData.projectId}`,
+      actionText: 'Download Now'
+    });
+
+    function calculateTotalSize(files) {
+  return Object.values(files).reduce((sum, content) => sum + content.length, 0);
+}
+
+    // Update project in database with COMPLETE data
     if (projectData.projectId) {
       await ProjectService.update(projectData.projectId, {
         status: 'completed',
@@ -921,27 +1004,22 @@ async function runUltraBuildProcess(buildId, projectData, tier) {
         downloadUrl: `/api/master/download/${buildId}`,
         buildData: finalResults,
         researchData: phase1,
-        competitorData: phase2
+        competitorData: phase2,
+        generatedFiles: allFiles,
+        fileStats: {
+          frontend_files: fileCounts.frontend,
+          backend_files: fileCounts.backend,
+          database_migrations: fileCounts.database,
+          total_files: fileCounts.frontend + fileCounts.backend + fileCounts.database,
+          total_size: totalSize
+        },
+        lastFileUpdate: new Date()
       });
-      console.log('✅ Project database updated');
+      console.log('✅ Project database updated with complete data');
     }
 
-    // Send completion notification
-    await NotificationService.create(projectData.userId, {
-      title: 'Build Complete! 🎉',
-      message: `"${projectData.projectName}" is ready! ${filesGenerated} files, ${linesOfCode.toLocaleString()} lines of code.`,
-      type: 'success',
-      actionUrl: `/projects/${projectData.projectId}`,
-      actionText: 'Download Now'
-    });
 
-    // Combine all files for final state
-    const allFiles = {
-      ...(phase3.frontend?.files || {}),
-      ...(phase3.backend?.files || {})
-    };
-
-    // Update build to completed state
+     // Update build to completed state
     updateBuildProgress(buildId, {
       status: 'completed',
       phase: 'done',

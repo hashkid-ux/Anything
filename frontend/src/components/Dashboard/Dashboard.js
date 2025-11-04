@@ -1,5 +1,5 @@
 // frontend/src/components/Dashboard/Dashboard.js
-// FIXED: Click building project to resume progress
+// FIXED: Properly pass complete data to preview
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 
-function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding }) {
+function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState({});
@@ -19,7 +19,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
 
   useEffect(() => {
     loadDashboardData();
-    // Poll for building projects
     const interval = setInterval(loadDashboardData, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -33,10 +32,14 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
       });
       setProjects(projectsRes.data.projects || []);
 
-      const overviewRes = await axios.get(`${API_BASE_URL}/api/dashboard/overview`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      setDashboardStats(overviewRes.data.stats);
+      try {
+        const overviewRes = await axios.get(`${API_BASE_URL}/api/dashboard/overview`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        setDashboardStats(overviewRes.data.stats);
+      } catch (err) {
+        console.warn('Dashboard stats not available:', err);
+      }
     } catch (error) {
       console.error('Failed to load dashboard:', error);
     } finally {
@@ -44,18 +47,14 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
     }
   };
 
-  // CRITICAL FIX: Resume building progress
   const handleResumeBuilding = (project) => {
     console.log('🔄 Resuming build for project:', project.id);
     
-    // Get build_id from project data
     const buildId = project.buildData?.build_id || `build_${Date.now()}_resume`;
     
-    // Store in session storage so BuildingProgress can resume
     sessionStorage.setItem('currentBuildId', buildId);
     sessionStorage.setItem('currentProjectId', project.id);
     
-    // Dispatch event to App.js to show BuildingProgress
     window.dispatchEvent(new CustomEvent('resumeBuilding', { 
       detail: { 
         projectId: project.id,
@@ -91,11 +90,9 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
 
       alert(`Build restarted! Build ID: ${response.data.build_id}`);
       
-      // Store for resuming
       sessionStorage.setItem('currentBuildId', response.data.build_id);
       sessionStorage.setItem('currentProjectId', project.id);
       
-      // Show building progress
       handleResumeBuilding(project);
       
     } catch (error) {
@@ -106,15 +103,207 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
     }
   };
 
-  const handleViewPreview = (project) => {
-    if (project.buildData) {
-      window.dispatchEvent(new CustomEvent('showPreview', { 
-        detail: project.buildData 
-      }));
-    } else {
-      alert('Preview not available - build data missing');
+  // FIXED: Properly load and pass complete build data
+  const handleViewPreview = async (project) => {
+  try {
+
+    console.log('📊 Loading preview for project:', project.id);
+    
+    // Validate project has required data
+    if (!project.generatedFiles || Object.keys(project.generatedFiles).length === 0) {
+      alert('⚠️ No files available for preview. Project may still be building or failed.');
+      return;
     }
-  };
+
+    // Build COMPLETE data structure with validation
+    const previewData = {
+      build_id: project.buildData?.build_id || project.id,
+      project_id: project.id,
+      project_name: project.name,
+      
+      // FILES - Direct from database
+      files: project.generatedFiles || {},
+      
+      // SUMMARY - Build from multiple sources with fallbacks
+      summary: {
+        files_generated: project.filesGenerated || 
+                        project.fileStats?.total_files || 
+                        Object.keys(project.generatedFiles || {}).length,
+        
+        lines_of_code: project.linesOfCode || 
+                      project.buildData?.summary?.lines_of_code || 
+                      0,
+        
+        qa_score: project.qaScore || 
+                 project.buildData?.summary?.qa_score || 
+                 project.buildData?.phases?.phase4?.qa_results?.overall_score || 
+                 0,
+        
+        deployment_ready: project.deploymentReady !== undefined 
+                         ? project.deploymentReady 
+                         : project.buildData?.summary?.deployment_ready || 
+                           project.buildData?.phases?.phase4?.deployment_ready || 
+                           false,
+        
+        // Research data
+        competitors_analyzed: project.researchData?.competitors?.total_analyzed || 
+                             project.researchData?._fullData?.competitor_analyses?.length || 
+                             project.buildData?.summary?.competitors_analyzed || 
+                             0,
+        
+        reviews_scanned: project.researchData?.reviews?.totalReviewsAnalyzed || 
+                        project.researchData?._fullData?.review_summary?.totalReviewsAnalyzed || 
+                        project.buildData?.summary?.reviews_scanned || 
+                        0,
+        
+        // Strategy data
+        competitive_advantages: project.competitorData?.competitive_advantages?.length || 
+                               project.buildData?.summary?.competitive_advantages || 
+                               0,
+        
+        // Code generation data
+        components_created: project.buildData?.phases?.phase3?.frontend?.stats?.components || 
+                           project.buildData?.summary?.components_created || 
+                           0,
+        
+        apis_generated: project.buildData?.phases?.phase3?.backend?.stats?.api_endpoints || 
+                       project.buildData?.summary?.apis_generated || 
+                       0,
+        
+        // Time tracking
+        time_taken: project.completedAt && project.createdAt 
+                   ? Math.round((new Date(project.completedAt) - new Date(project.createdAt)) / 1000)
+                   : project.buildData?.summary?.time_taken || 
+                     180,
+        
+        tier: project.buildData?.summary?.tier || 'free'
+      },
+      
+      // PHASES - Reconstruct from database with validation
+      phases: {
+        phase1: project.researchData || {
+          market: null,
+          competitors: null,
+          reviews: null,
+          trends: null,
+          dateContext: null
+        },
+        
+        phase2: project.competitorData || {
+          competitive_advantages: [],
+          ux_strategy: {},
+          features_prioritized: []
+        },
+        
+        phase3: {
+          frontend: {
+            files: extractFrontendFiles(project.generatedFiles),
+            stats: {
+              total_files: project.fileStats?.frontend_files || 0,
+              components: project.buildData?.phases?.phase3?.frontend?.stats?.components || 0,
+              total_lines: Math.floor((project.linesOfCode || 0) * 0.6) // Estimate 60% frontend
+            }
+          },
+          backend: {
+            files: extractBackendFiles(project.generatedFiles),
+            stats: {
+              total_files: project.fileStats?.backend_files || 0,
+              api_endpoints: project.buildData?.phases?.phase3?.backend?.stats?.api_endpoints || 0,
+              total_lines: Math.floor((project.linesOfCode || 0) * 0.4) // Estimate 40% backend
+            }
+          },
+          database: project.buildData?.phases?.phase3?.database || {
+            migrations: [],
+            prisma_schema: null,
+            seeds: null
+          }
+        },
+        
+        phase4: {
+          qa_results: {
+            overall_score: project.qaScore || 0,
+            tests_created: project.buildData?.phases?.phase4?.qa_results?.tests_created || 0
+          },
+          deployment_ready: project.deploymentReady || false
+        }
+      },
+      
+      // DOWNLOAD URL
+      downloadUrl: project.downloadUrl || `/api/master/download/${project.id}`,
+      
+      // Metadata
+      timestamp: project.completedAt || project.createdAt,
+      status: 'completed'
+    };
+    
+    // Validation checks
+    const validation = {
+      hasFiles: Object.keys(previewData.files).length > 0,
+      hasResearchData: !!previewData.phases.phase1.market,
+      hasCompetitorData: !!previewData.phases.phase2.competitive_advantages,
+      hasSummary: previewData.summary.files_generated > 0,
+      filesCount: Object.keys(previewData.files).length
+    };
+    
+    console.log('✅ Preview data validated:', validation);
+    
+    if (!validation.hasFiles) {
+      alert('⚠️ No files available. The project may not have completed successfully.');
+      return;
+    }
+    
+    if (validation.filesCount < 5) {
+      console.warn('⚠️ Low file count detected:', validation.filesCount);
+    }
+    
+    // Dispatch to App.js
+    console.log('📤 Dispatching preview event with complete data');
+    window.dispatchEvent(new CustomEvent('showPreview', { 
+      detail: previewData 
+    }));
+    
+  } catch (error) {
+    console.error('❌ Preview error:', error);
+    alert('Failed to load preview: ' + error.message);
+  }
+};
+
+// Helper: Extract frontend files from generated files
+function extractFrontendFiles(files) {
+  if (!files) return {};
+  
+  const frontendFiles = {};
+  Object.entries(files).forEach(([path, content]) => {
+    if (path.startsWith('src/') || 
+        path.startsWith('public/') || 
+        path.startsWith('frontend/') ||
+        path.includes('App.js') || 
+        path.includes('index.js') ||
+        path.includes('components/')) {
+      frontendFiles[path] = content;
+    }
+  });
+  
+  return frontendFiles;
+}
+
+// Helper: Extract backend files from generated files
+function extractBackendFiles(files) {
+  if (!files) return {};
+  
+  const backendFiles = {};
+  Object.entries(files).forEach(([path, content]) => {
+    if (path.startsWith('routes/') || 
+        path.startsWith('controllers/') || 
+        path.startsWith('middleware/') ||
+        path.startsWith('backend/') ||
+        path.includes('server.js')) {
+      backendFiles[path] = content;
+    }
+  });
+  
+  return backendFiles;
+}
 
   const handleDownload = async (project) => {
     try {
@@ -131,14 +320,12 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
 
       console.log('📥 Downloading from:', downloadUrl);
 
-      // Track download
       await axios.post(
         `${API_BASE_URL}/api/projects/${project.id}/download`,
         {},
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
 
-      // Download file using blob
       const response = await axios.get(downloadUrl, {
         responseType: 'blob',
         headers: { 'Authorization': `Bearer ${token}` }
@@ -179,7 +366,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
     }
   };
 
-  // Group projects by status
   const buildingProjects = projects.filter(p => p.status === 'building');
   const completedProjects = projects.filter(p => p.status === 'completed');
   const failedProjects = projects.filter(p => p.status === 'failed');
@@ -194,14 +380,12 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
 
   return (
     <div className="min-h-screen relative">
-      {/* Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
         <div className="absolute top-1/4 -left-48 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl"></div>
         <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl"></div>
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-8">
-        {/* Header */}
         <div className="mb-10">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div>
@@ -226,7 +410,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
           </div>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
             icon={<Zap />}
@@ -254,7 +437,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
           />
         </div>
 
-        {/* Building Projects (Live) - FIXED WITH CLICK TO RESUME */}
         {buildingProjects.length > 0 && (
           <div className="mb-8">
             <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -273,7 +455,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
           </div>
         )}
 
-        {/* Failed Projects (With Retry) */}
         {failedProjects.length > 0 && (
           <div className="mb-8">
             <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -294,7 +475,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
           </div>
         )}
 
-        {/* Completed Projects */}
         <div className="mb-8">
           <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-green-400" />
@@ -326,7 +506,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
           )}
         </div>
 
-        {/* Upgrade CTA */}
         {user.tier === 'free' && (
           <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 backdrop-blur-sm border border-purple-500/20 rounded-xl p-8 text-center">
             <Crown className="w-12 h-12 text-purple-400 mx-auto mb-4" />
@@ -345,7 +524,6 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing, onResumeBuilding
   );
 }
 
-// FIXED: Building Project Card - Click to Resume
 function BuildingProjectCard({ project, onResume }) {
   return (
     <button
@@ -389,7 +567,6 @@ function BuildingProjectCard({ project, onResume }) {
   );
 }
 
-// Failed Project Card (same as before)
 function FailedProjectCard({ project, onRetry, onDelete, retrying }) {
   return (
     <div className="bg-slate-800/30 border-2 border-red-500/50 rounded-xl p-5">
@@ -426,7 +603,6 @@ function FailedProjectCard({ project, onRetry, onDelete, retrying }) {
   );
 }
 
-// Completed Project Card (same as before)
 function CompletedProjectCard({ project, onViewPreview, onDownload, onDelete }) {
   return (
     <div className="group bg-slate-800/30 border border-slate-700 rounded-xl p-5 hover:bg-slate-800/50 hover:border-slate-600 transition-all">
@@ -442,7 +618,6 @@ function CompletedProjectCard({ project, onViewPreview, onDownload, onDelete }) 
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 gap-2 mb-4 text-xs">
         <div className="bg-slate-700/30 rounded p-2">
           <div className="text-slate-500">Files</div>
@@ -454,7 +629,6 @@ function CompletedProjectCard({ project, onViewPreview, onDownload, onDelete }) 
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex gap-2">
         <button
           onClick={onViewPreview}
