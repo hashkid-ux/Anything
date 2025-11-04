@@ -10,7 +10,7 @@ class DeployAgentUltra {
     this.tier = tier;
     this.projectId = projectId;
     this.client = new AIClient(process.env.OPENROUTER_API_KEY);
-    this.model = 'deepseek/deepseek-chat-v3.1:free';
+    this.model = 'qwen/qwen-2.5-coder-32b-instruct:free';
   }
 
   async deployFullStack(projectData, codeFiles) {

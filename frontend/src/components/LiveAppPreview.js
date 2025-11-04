@@ -265,57 +265,78 @@ function LiveAppPreview({ buildId, files, progress }) {
   };
 
   const extractComponents = (files) => {
-    const components = [];
-    const componentPaths = Object.keys(files).filter(path => 
-      (path.includes('components/') || path.includes('pages/')) && 
-      (path.endsWith('.jsx') || path.endsWith('.js'))
-    );
-    
-    console.log('🔍 Component files found:', componentPaths);
-    
-    componentPaths.forEach(path => {
-      try {
-        const content = files[path];
-        const cleaned = sanitizeCode(content);
-        
-        if (cleaned && cleaned.trim().length > 0) {
-          components.push(`// Component: ${path}\n${cleaned}`);
-        }
-      } catch (error) {
-        console.warn(`⚠️ Failed to process component ${path}:`, error);
+  const components = [];
+  const componentPaths = Object.keys(files).filter(path => 
+    (path.includes('components/') || path.includes('pages/')) && 
+    (path.endsWith('.jsx') || path.endsWith('.js'))
+  );
+  
+  console.log('🔍 Component files found:', componentPaths);
+  
+  componentPaths.forEach(path => {
+    try {
+      const content = files[path];
+      
+      // **PRE-VALIDATE: Skip if contaminated**
+      if (content.includes('｜') || content.includes('▁')) {
+        console.warn(`⚠️ Skipping contaminated file: ${path}`);
+        return;
       }
-    });
-    
-    return components;
-  };
+      
+      const cleaned = sanitizeCode(content);
+      
+      if (cleaned && cleaned.trim().length > 0) {
+        components.push(`// Component: ${path}\n${cleaned}`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ Failed to process ${path}:`, error);
+    }
+  });
+  
+  return components;
+};
 
   const sanitizeCode = (code) => {
   if (!code) return '';
   
   try {
     let sanitized = code
-      // Remove all import statements
+      // Remove imports
       .replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '')
       .replace(/import\s+['"].*?['"];?\s*/g, '')
-      // Remove export default
+      
+      // Remove exports
       .replace(/export\s+default\s+/g, '')
-      // Remove export keyword but keep const/function
       .replace(/export\s+(const|function|class)\s+/g, '$1 ')
-      // Remove any remaining exports
       .replace(/export\s+\{[^}]*\};?\s*/g, '')
-      // **FIX: Remove tokenization artifacts**
+      
+      // **CRITICAL: Remove ALL tokenization artifacts**
       .replace(/<[｜|][^>]*[｜|]>/g, '')
       .replace(/[｜|]begin[_▁]of[_▁]sentence[｜|]/gi, '')
       .replace(/[｜|]end[_▁]of[_▁]turn[｜|]/gi, '')
+      .replace(/[｜|]start[_▁]header[_▁]id[｜|]/gi, '')
+      .replace(/[｜|]end[_▁]header[_▁]id[｜|]/gi, '')
       .replace(/[｜|][^｜|]*[｜|]/g, '')
-      // Remove markdown artifacts
-      .replace(/```(?:javascript|jsx|js)?\n?/g, '')
+      
+      // Remove markdown
+      .replace(/```(?:javascript|jsx|js|typescript|tsx)?\n?/g, '')
       .replace(/```\n?$/g, '')
+      
+      // Remove BOM and zero-width characters
+      .replace(/^\uFEFF/, '')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      
       .trim();
+    
+    // Validate result doesn't contain artifacts
+    if (sanitized.includes('｜') || sanitized.includes('▁')) {
+      console.warn('⚠️ Code still contaminated after cleaning, using fallback');
+      return '';
+    }
     
     return sanitized;
   } catch (error) {
-    console.error('Error sanitizing code:', error);
+    console.error('Sanitize error:', error);
     return '';
   }
 };
