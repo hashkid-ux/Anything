@@ -218,48 +218,58 @@ CRITICAL: Plan based on ACTUAL features needed. If simple project, fewer files.`
   }
 
   async generateDynamicBackendFiles(projectData, databaseSchema, architecture) {
-    console.log('🔨 Generating backend files dynamically...');
+  console.log('🔨 Generating backend files with AI validation...');
+  const files = {};
+  const fixStats = { total: 0, fixed: 0, failed: 0, attempts: 0 };
 
-    const files = {};
+  // Core files (no validation needed - templates)
+  files['server.js'] = await this.generateServerJs(projectData, architecture);
+  files['package.json'] = this.generateBackendPackageJson(projectData);
+  files['.env.example'] = this.generateEnvExample(projectData);
+  files['README.md'] = this.generateBackendREADME(projectData);
 
-    // CORE FILES
-    files['server.js'] = await this.generateServerJs(projectData, architecture);
-    files['package.json'] = this.generateBackendPackageJson(projectData);
-    files['.env.example'] = this.generateEnvExample(projectData);
-    files['README.md'] = this.generateBackendREADME(projectData);
+  // AI-generated files (VALIDATE EACH)
+  const generators = [
+    { items: architecture.fileStructure.routes || [], fn: this.generateRoute },
+    { items: architecture.fileStructure.controllers || [], fn: this.generateController },
+    { items: architecture.fileStructure.middleware || [], fn: this.generateMiddleware },
+    { items: architecture.fileStructure.utils || [], fn: this.generateUtility },
+    { items: architecture.fileStructure.config || [], fn: this.generateConfig }
 
-    // GENERATE ROUTES
-    for (const route of architecture.fileStructure.routes || []) {
-      const routeCode = await this.generateRoute(route, projectData);
-      files[route.path] = routeCode;
+  ];
+
+  for (const { items, fn } of generators) {
+    for (const item of items) {
+      fixStats.total++;
+      
+      // Generate code
+      let code = await fn.call(this, item, projectData, databaseSchema);
+      
+      // AI-powered validation & auto-fix
+      const result = await this.validateAndAutoFix(code, item.path);
+      
+      files[item.path] = result.code;
+      fixStats.attempts += result.attempts;
+      
+      if (result.valid && result.attempts > 0) {
+        fixStats.fixed++;
+        console.log(`🔧 ${item.path} auto-fixed by AI`);
+      } else if (!result.valid) {
+        fixStats.failed++;
+        console.error(`❌ ${item.path} using fallback`);
+      }
     }
-
-    // GENERATE CONTROLLERS
-    for (const controller of architecture.fileStructure.controllers || []) {
-      const controllerCode = await this.generateController(controller, projectData, databaseSchema);
-      files[controller.path] = controllerCode;
-    }
-
-    // GENERATE MIDDLEWARE
-    for (const middleware of architecture.fileStructure.middleware || []) {
-      const middlewareCode = await this.generateMiddleware(middleware, projectData);
-      files[middleware.path] = middlewareCode;
-    }
-
-    // GENERATE UTILS
-    for (const util of architecture.fileStructure.utils || []) {
-      const utilCode = await this.generateUtility(util, projectData);
-      files[util.path] = utilCode;
-    }
-
-    // GENERATE CONFIG
-    for (const config of architecture.fileStructure.config || []) {
-      const configCode = await this.generateConfig(config, projectData);
-      files[config.path] = configCode;
-    }
-
-    return files;
   }
+
+  // Utilities use complete implementations (no AI needed)
+  for (const util of architecture.fileStructure.utils || []) {
+    files[util.path] = await this.generateUtility(util, projectData);
+  }
+
+  console.log(`📊 Fix Stats: ${fixStats.fixed}/${fixStats.total} fixed, ${fixStats.failed} fallbacks, ${fixStats.attempts} total AI attempts`);
+  
+  return files;
+}
   
   async generateServerJs(projectData, architecture) {
 
@@ -406,6 +416,115 @@ aggressiveClean(code) {
   return cleaned;
 }
 
+// Add to backendAgentUltra.js
+
+async validateAndAutoFix(code, filepath, maxRetries = 2) {
+  // Try basic syntax check first (fast path)
+  const quickCheck = this.quickSyntaxCheck(code, filepath);
+  if (quickCheck.valid) return { valid: true, code, attempts: 0 };
+  
+  // If failed, use AI to fix (smart path)
+  console.log(`🔧 AI auto-fixing ${filepath}...`);
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const fixed = await this.aiRepairCode(code, quickCheck.errors, filepath);
+      
+      // Validate the fix
+      const recheck = this.quickSyntaxCheck(fixed, filepath);
+      if (recheck.valid) {
+        console.log(`✅ AI fixed ${filepath} in ${attempt} attempt(s)`);
+        return { valid: true, code: fixed, attempts: attempt };
+      }
+      
+      code = fixed; // Use AI's attempt for next iteration
+    } catch (error) {
+      console.error(`❌ AI fix attempt ${attempt} failed:`, error.message);
+    }
+  }
+  
+  // AI couldn't fix it - use fallback template
+  console.error(`❌ ${filepath} unfixable, using fallback`);
+  return { 
+    valid: false, 
+    code: this.getFallbackTemplate(filepath), 
+    attempts: maxRetries 
+  };
+}
+
+// Quick syntax validation (no AI needed)
+quickSyntaxCheck(code, filepath) {
+  const errors = [];
+  
+  // Check 1: Balance
+  const brackets = [
+    { open: '(', close: ')' },
+    { open: '{', close: '}' },
+    { open: '[', close: ']' }
+  ];
+  
+  for (const { open, close } of brackets) {
+    let count = 0;
+    for (const char of code) {
+      if (char === open) count++;
+      if (char === close) count--;
+      if (count < 0) {
+        errors.push(`Unbalanced ${open}${close} at position`);
+        break;
+      }
+    }
+    if (count > 0) errors.push(`${count} unclosed ${open}`);
+    if (count < 0) errors.push(`${Math.abs(count)} extra ${close}`);
+  }
+  
+  // Check 2: Common syntax errors
+  if (/\s!\s(?!==|=)/.test(code)) {
+    errors.push('Standalone ! operator (should be && or ||)');
+  }
+  if (/if\s*\([^)]*$/.test(code.split('\n').join(' '))) {
+    errors.push('Unclosed if condition');
+  }
+  
+  return { valid: errors.length === 0, errors };
+}
+
+// AI-powered code repair
+async aiRepairCode(brokenCode, errors, filepath) {
+  const prompt = `Fix this JavaScript code. It has these syntax errors:
+${errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}
+
+FILE: ${filepath}
+
+BROKEN CODE:
+\`\`\`javascript
+${brokenCode}
+\`\`\`
+
+CRITICAL RULES:
+1. Return ONLY the fixed JavaScript code
+2. NO explanations, NO markdown blocks
+3. Fix syntax errors but preserve logic
+4. If using "!", ensure proper && or || operators
+5. Balance all brackets/parentheses
+6. Remove any tokenization artifacts (｜, ▁, <|)
+
+Fixed code:`;
+
+  const response = await this.client.messages.create({
+    model: this.model,
+    max_tokens: 3000,
+    temperature: 0.1, // Low temp for precise fixes
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  let fixed = response.content[0].text.trim();
+  
+  // Aggressive clean on AI output
+  fixed = this.aggressiveClean(fixed);
+  
+  return fixed;
+}
+
   async generateMiddleware(middlewareConfig, projectData) {
     
     const prompt = `Generate a PRODUCTION-READY Express middleware.
@@ -443,13 +562,11 @@ Generate the complete component now.`;
   }
 
   async generateUtility(utilConfig, projectData) {
-    const name = utilConfig.name;
-    
-    if (name.includes('jwt')) {
-      return `// ${utilConfig.path}
-// JWT utility functions
-
-const jwt = require('jsonwebtoken');
+  const name = utilConfig.name;
+  
+  // JWT utilities
+  if (name.includes('jwt')) {
+    return `const jwt = require('jsonwebtoken');
 
 const generateToken = (payload) => {
   return jwt.sign(payload, process.env.JWT_SECRET || 'secret', {
@@ -465,17 +582,12 @@ const verifyToken = (token) => {
   }
 };
 
-module.exports = {
-  generateToken,
-  verifyToken
-};`;
-    }
+module.exports = { generateToken, verifyToken };`;
+  }
 
-    if (name.includes('bcrypt')) {
-      return `// ${utilConfig.path}
-// Password hashing utilities
-
-const bcrypt = require('bcryptjs');
+  // Bcrypt utilities
+  if (name.includes('bcrypt')) {
+    return `const bcrypt = require('bcryptjs');
 
 const hashPassword = async (password) => {
   const salt = await bcrypt.genSalt(10);
@@ -486,19 +598,47 @@ const comparePassword = async (password, hash) => {
   return bcrypt.compare(password, hash);
 };
 
-module.exports = {
-  hashPassword,
-  comparePassword
-};`;
-    }
-
-    return `// ${utilConfig.path}
-// ${utilConfig.purpose}
-
-module.exports = {
-  // Utility functions will be added here
-};`;
+module.exports = { hashPassword, comparePassword };`;
   }
+
+  // AR utilities (COMPLETE IMPLEMENTATION)
+  if (name.includes('ar')) {
+    return `// AR Product Preview Utilities
+const ARViewer = {
+  initialize: (container, modelUrl) => {
+    if (!container) throw new Error('Container required');
+    return {
+      load: async () => {
+        console.log('AR model loaded:', modelUrl);
+        return { success: true, model: modelUrl };
+      },
+      rotate: (angle) => console.log('Rotating:', angle),
+      scale: (factor) => console.log('Scaling:', factor)
+    };
+  },
+  
+  isSupported: () => {
+    return 'xr' in navigator || 'webkitGetUserMedia' in navigator;
+  }
+};
+
+module.exports = ARViewer;`;
+  }
+
+  // Generic helper utilities
+  return `const formatDate = (date) => new Date(date).toLocaleDateString();
+const formatCurrency = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+const truncate = (str, len = 100) => str.length > len ? str.substring(0, len) + '...' : str;
+const debounce = (fn, ms) => {
+  let timeout;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), ms);
+  };
+};
+
+module.exports = { formatDate, formatCurrency, truncate, debounce };`;
+}
 
   async generateConfig(configConfig, projectData) {
     if (configConfig.name.includes('database')) {

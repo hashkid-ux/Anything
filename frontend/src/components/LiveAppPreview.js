@@ -18,6 +18,9 @@ function LiveAppPreview({ buildId, files, progress }) {
   const [selectedFile, setSelectedFile] = useState('src/App.js');
   const iframeRef = useRef(null);
   const previousFilesRef = useRef({});
+  // Add state for AI repair tracking
+const [repairAttempts, setRepairAttempts] = useState(0);
+const [lastRepairError, setLastRepairError] = useState(null);
 
   // Initialize preview when files are available
   useEffect(() => {
@@ -84,103 +87,102 @@ function LiveAppPreview({ buildId, files, progress }) {
     }
   };
 
-  const createPreviewHTML = (files) => {
-    console.log('🏗️ Building preview HTML with validation...');
-  
-  // CRITICAL: Validate ALL files before processing
-  const validatedFiles = {};
-  let contaminatedCount = 0;
-
-   Object.entries(files).forEach(([path, content]) => {
-    if (typeof content !== 'string') {
-      console.warn(`⚠️ Skipping non-string file: ${path}`);
-      return;
-    }
+  // Replace createPreviewHTML with AI-aware version
+const createPreviewHTML = async (files) => {
+  try {
+    console.log('🏗️ Building preview with AI validation...');
     
-    // Check for contamination markers
-    if (content.includes('｜') || content.includes('▁') || content.includes('<|')) {
-      console.error(`🚫 CONTAMINATED: ${path} - Skipping`);
-      contaminatedCount++;
-      return;
-    }
-    
-    // Additional syntax check for JS files
-    if (path.endsWith('.js') || path.endsWith('.jsx')) {
-      // Basic bracket balance check
-      const openBraces = (content.match(/{/g) || []).length;
-      const closeBraces = (content.match(/}/g) || []).length;
-      
-      if (Math.abs(openBraces - closeBraces) > 2) {
-        console.error(`🚫 SYNTAX ERROR: ${path} - Unbalanced braces`);
-        return;
-      }
-    }
-    
-    validatedFiles[path] = content;
-  });
-  
-  if (contaminatedCount > 0) {
-    addLog(`⚠️ Skipped ${contaminatedCount} contaminated files`, 'warning');
-  }
-  
-  console.log(`✅ Validated ${Object.keys(validatedFiles).length} files`);
-  
-    
-    // Find App.js file (check multiple possible paths)
-    const appPaths = [
-      'src/App.js',
-      'frontend/src/App.js', 
-      'App.js',
-      'src/App.jsx',
-      'frontend/src/App.jsx'
-    ];
-    
+    // Validate App.js
+    const appPaths = ['src/App.js', 'frontend/src/App.js', 'App.js'];
     let appJs = null;
     let appPath = null;
     
     for (const path of appPaths) {
-    if (validatedFiles[path]) {
-      appJs = validatedFiles[path];
-      appPath = path;
-      break;
+      if (files[path]) {
+        appJs = files[path];
+        appPath = path;
+        break;
+      }
     }
-  }
     
-    // **VALIDATE: Check for contamination**
-  if (appJs.includes('｜') || appJs.includes('▁')) {
-    console.error('⚠️ Detected contaminated code, using fallback');
-    appJs = getDefaultApp();
-  }
-
     if (!appJs) {
-    console.warn('⚠️ No valid App.js found - Using fallback');
-    appJs = getDefaultApp();
-  } else {
-    console.log(`✅ Using App from: ${appPath}`);
-  }
-    
-     // Extract and validate components
-  const components = extractComponents(validatedFiles);
-    
-     // **VALIDATE: Clean each component**
-  const cleanComponents = components.map(comp => {
-    const cleaned = sanitizeCode(comp);
-    if (!cleaned || cleaned.includes('｜')) {
-      console.warn('⚠️ Skipping contaminated component');
-      return '';
+      appJs = getDefaultApp();
+    } else {
+      // AI validation for App.js
+      const validation = await validateComponentWithAI(appJs, appPath);
+      if (!validation.valid && repairAttempts < 2) {
+        addLog('🔧 App.js has errors, asking AI to fix...', 'warning');
+        setRepairAttempts(prev => prev + 1);
+        
+        const fixed = await repairComponentWithAI(appJs, validation.errors);
+        if (fixed) {
+          appJs = fixed;
+          addLog('✅ AI repaired App.js', 'success');
+        }
+      }
     }
     
-    return cleaned;
-  }).filter(Boolean);
-
-
-    console.log(`📦 Extracted ${components.length} components`);
+    // Extract and validate components
+    const components = extractComponents(files);
     
-    // Build HTML
-    // Build HTML with error boundaries
-  return buildSafeHTML(appJs, components);
-  
-  };
+    return buildSafeHTML(appJs, components);
+    
+  } catch (error) {
+    console.error('Preview build error:', error);
+    setLastRepairError(error.message);
+    return buildSafeHTML(getDefaultApp(), []);
+  }
+};
+
+// AI component validation
+const validateComponentWithAI = async (code, filepath) => {
+  try {
+    // Quick syntax check
+    const openCount = (code.match(/\(/g) || []).length;
+    const closeCount = (code.match(/\)/g) || []).length;
+    const braceOpen = (code.match(/\{/g) || []).length;
+    const braceClose = (code.match(/\}/g) || []).length;
+    
+    const errors = [];
+    if (openCount !== closeCount) errors.push(`Unbalanced parentheses: ${openCount} open, ${closeCount} close`);
+    if (braceOpen !== braceClose) errors.push(`Unbalanced braces: ${braceOpen} open, ${braceClose} close`);
+    if (/\s!\s(?!==)/.test(code)) errors.push('Standalone ! operator');
+    
+    return { valid: errors.length === 0, errors };
+  } catch (error) {
+    return { valid: false, errors: [error.message] };
+  }
+};
+
+// AI component repair
+const repairComponentWithAI = async (brokenCode, errors) => {
+  try {
+    const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
+    const token = localStorage.getItem('token');
+    
+    const response = await fetch(`${API_BASE_URL}/api/repair-code`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        code: brokenCode,
+        errors: errors,
+        language: 'javascript'
+      })
+    });
+    
+    if (!response.ok) throw new Error('AI repair failed');
+    
+    const data = await response.json();
+    return data.fixed_code;
+    
+  } catch (error) {
+    console.error('AI repair error:', error);
+    return null;
+  }
+};
 
   const buildSafeHTML = (appJs, components) => {
   return `<!DOCTYPE html>
@@ -370,36 +372,34 @@ function LiveAppPreview({ buildId, files, progress }) {
   
   try {
     let sanitized = code
-      // Remove imports
       .replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '')
-      .replace(/import\s+['"].*?['"];?\s*/g, '')
-      
-      // Remove exports
       .replace(/export\s+default\s+/g, '')
       .replace(/export\s+(const|function|class)\s+/g, '$1 ')
-      .replace(/export\s+\{[^}]*\};?\s*/g, '')
-      
-      // **CRITICAL: Remove ALL tokenization artifacts**
       .replace(/<[｜|][^>]*[｜|]>/g, '')
       .replace(/[｜|]begin[_▁]of[_▁]sentence[｜|]/gi, '')
-      .replace(/[｜|]end[_▁]of[_▁]turn[｜|]/gi, '')
-      .replace(/[｜|]start[_▁]header[_▁]id[｜|]/gi, '')
-      .replace(/[｜|]end[_▁]header[_▁]id[｜|]/gi, '')
-      .replace(/[｜|][^｜|]*[｜|]/g, '')
-      
-      // Remove markdown
-      .replace(/```(?:javascript|jsx|js|typescript|tsx)?\n?/g, '')
-      .replace(/```\n?$/g, '')
-      
-      // Remove BOM and zero-width characters
-      .replace(/^\uFEFF/, '')
-      .replace(/[\u200B-\u200D\uFEFF]/g, '')
-      
+      .replace(/```[\w]*\n?/g, '')
       .trim();
     
-    // Validate result doesn't contain artifacts
+    // CRITICAL: Fix logical operators
+    sanitized = sanitized
+      .replace(/\s+!\s+(\w)/g, ' && !$1')  // Fix "! variable"
+      .replace(/(\w+)\s+!\s+(\w+)/g, '$1 && !$2');  // Fix "var1 ! var2"
+    
+    // Validate parentheses balance
+    let balance = 0;
+    for (const char of sanitized) {
+      if (char === '(') balance++;
+      if (char === ')') balance--;
+    }
+    
+    if (balance > 0) {
+      sanitized += ')'.repeat(balance);
+      console.warn(`⚠️ Auto-closed ${balance} parentheses`);
+    }
+    
+    // Final contamination check
     if (sanitized.includes('｜') || sanitized.includes('▁')) {
-      console.warn('⚠️ Code still contaminated after cleaning, using fallback');
+      console.error('❌ Code still contaminated, skipping');
       return '';
     }
     
