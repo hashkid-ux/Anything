@@ -55,18 +55,23 @@ function App() {
   }, [isOAuthCallback]);
 
   // CRITICAL FIX: Listen for resume building event
-  useEffect(() => {
-    const handleResumeBuilding = (event) => {
-      const { projectId, buildId, prompt, projectName } = event.detail;
-      console.log('🔄 Resume building event received:', { projectId, buildId, projectName });
-      
-      setUserPrompt(prompt || `Resuming build for ${projectName}`);
-      setView('building');
-    };
-    
-    window.addEventListener('resumeBuilding', handleResumeBuilding);
-    return () => window.removeEventListener('resumeBuilding', handleResumeBuilding);
-  }, []);
+useEffect(() => {
+  const handleResumeBuilding = (event) => {
+  const { buildId, projectId, prompt, projectName } = event.detail;
+  
+  // Update URL with resume params (enables cross-device)
+  const url = new URL(window.location);
+  url.searchParams.set('resumeBuild', buildId);
+  url.searchParams.set('projectId', projectId);
+  window.history.pushState({}, '', url);
+  
+  setUserPrompt(prompt || `Resuming ${projectName}`);
+  setView('building');
+};
+  
+  window.addEventListener('resumeBuilding', handleResumeBuilding);
+  return () => window.removeEventListener('resumeBuilding', handleResumeBuilding);
+}, []);
 
   useEffect(() => {
     const handleShowPreview = (event) => {

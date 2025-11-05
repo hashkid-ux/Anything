@@ -49,6 +49,13 @@ class WebScraperUltra {
   // ==========================================
 
   async initBrowser() {
+
+    // Restart browser every 10 uses to prevent memory leaks
+  if (this.browserUseCount > 10) {
+    await this.closeBrowser();
+    this.browserUseCount = 0;
+  }
+
     if (this.browserDisabled) {
       return null;
     }
@@ -104,7 +111,9 @@ class WebScraperUltra {
       
       this.browserReady = true;
       console.log('✅ Browser ready');
+      this.browserUseCount = (this.browserUseCount || 0) + 1;
       return this.browser;
+
       
     } catch (error) {
       console.error('❌ Browser launch failed:', error.message);
@@ -118,6 +127,7 @@ class WebScraperUltra {
       
       return null;
     }
+
   }
 
   async closeBrowser() {
@@ -239,32 +249,49 @@ class WebScraperUltra {
   }
 
   async scrapeWithBrowser(url, options) {
-    const browser = await this.initBrowser();
-    if (!browser) {
-      throw new Error('Browser not available');
-    }
-
     let context = null;
     let page = null;
 
     try {
+      const browser = await this.initBrowser();
+    if (!browser) throw new Error('Browser unavailable');
+
       context = await browser.newContext({
         userAgent: this.getRandomUserAgent(),
         viewport: { width: 1280, height: 720 },
         ignoreHTTPSErrors: true,
-        javaScriptEnabled: true
+        javaScriptEnabled: true,
+        // ← ADD THESE:
+      bypassCSP: true,
+      timezoneId: 'America/New_York',
+      locale: 'en-US',
+      // Critical: Prevent memory leaks
+      serviceWorkers: 'block',
+      extraHTTPHeaders: {
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
       });
 
       page = await context.newPage();
-      page.setDefaultTimeout(15000);
-      page.setDefaultNavigationTimeout(15000);
+      page.setDefaultTimeout(10000);
+      page.setDefaultNavigationTimeout(10000);
+
+      // ← ADD: Block heavy resources
+    await page.route('**/*', (route) => {
+      const type = route.request().resourceType();
+      if (['image', 'media', 'font', 'stylesheet'].includes(type)) {
+        route.abort();
+      } else {
+        route.continue();
+      }
+    });
 
       await page.goto(url, {
         waitUntil: 'domcontentloaded',
-        timeout: 15000
+        timeout: 10000
       });
 
-      await page.waitForTimeout(2000); // Let JS load
+      await page.waitForTimeout(1500); // Let JS load
 
       const html = await page.content();
       const $ = cheerio.load(html);
@@ -290,15 +317,26 @@ class WebScraperUltra {
       return data;
 
     } catch (error) {
-      throw error;
-    } finally {
-      if (page) {
-        try { await page.close(); } catch (e) {}
-      }
-      if (context) {
-        try { await context.close(); } catch (e) {}
-      }
+      // ← ADD: More graceful degradation
+    if (error.message.includes('Target') || error.message.includes('closed')) {
+      this.browserDisabled = true;
+      console.log('🚫 Browser permanently disabled after crash');
     }
+    throw error;
+    
+  } finally {
+      // ← CRITICAL: Aggressive cleanup
+    if (page) {
+      try { 
+        await page.close({ runBeforeUnload: false }); 
+      } catch (e) {}
+    }
+    if (context) {
+      try { 
+        await context.close(); 
+      } catch (e) {}
+    }
+  }
   }
 
   // ==========================================

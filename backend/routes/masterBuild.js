@@ -261,15 +261,15 @@ router.post('/build', authenticateToken, async (req, res) => {
         database: database || 'postgresql',
         targetPlatform: targetPlatform || 'web',
         status: 'building',
-        buildProgress: 0
+        buildProgress: 0,
+        startedAt: new Date(),  // This will now work
       });
       dbProjectId = newProject.id;
       console.log('✅ Project created:', dbProjectId);
     } else {
       await ProjectService.update(dbProjectId, {
         status: 'building',
-        buildProgress: 0,
-        startedAt: new Date()
+        buildProgress: 0
       });
       console.log('🔄 Retrying build:', dbProjectId);
     }
@@ -987,10 +987,6 @@ async function runUltraBuildProcess(buildId, projectData, tier) {
       actionText: 'Download Now'
     });
 
-    function calculateTotalSize(files) {
-  return Object.values(files).reduce((sum, content) => sum + content.length, 0);
-}
-
     // Update project in database with COMPLETE data
     if (projectData.projectId) {
       await ProjectService.update(projectData.projectId, {
@@ -1145,24 +1141,66 @@ async function createDownloadPackage(buildId, projectName, results) {
       }
 
       // ==========================================
+      // EXTRACT FILES FIRST
+      // ==========================================
+      const frontendFiles = results.phase3.frontend?.files || {};
+      const backendFiles = results.phase3.backend?.files || {};
+
+      // ==========================================
+      // NOW VALIDATE (after extraction)
+      // ==========================================
+      const cleanedFrontendFiles = {};
+      let skippedFiles = 0;
+
+      Object.entries(frontendFiles).forEach(([filepath, content]) => {
+        // Skip if contaminated
+        if (content.includes('│') || content.includes('▁') || content.includes('<|')) {
+          console.error(`🚫 Skipping contaminated file: ${filepath}`);
+          skippedFiles++;
+          return;
+        }
+        
+        // Clean the content
+        let cleaned = content
+          .replace(/```[\w]*\n?/g, '')
+          .replace(/```\s*$/g, '')
+          .replace(/<\|.*?\|>/g, '')
+          .replace(/\|begin_of_sentence\|/gi, '')
+          .replace(/\|end_of_turn\|/gi, '')
+          .trim();
+        
+        cleanedFrontendFiles[filepath] = cleaned;
+      });
+
+      console.log(`✅ Validated: ${Object.keys(cleanedFrontendFiles).length} clean files`);
+      if (skippedFiles > 0) {
+        console.warn(`⚠️ Skipped: ${skippedFiles} contaminated files`);
+      }
+
+      // ==========================================
       // FRONTEND FILES
       // ==========================================
-      if (results.phase3.frontend?.files) {
-        const frontendFiles = results.phase3.frontend.files;
-        Object.entries(frontendFiles).forEach(([filepath, content]) => {
+      if (Object.keys(cleanedFrontendFiles).length > 0) {
+        Object.entries(cleanedFrontendFiles).forEach(([filepath, content]) => {
           archive.append(content, { name: `frontend/${filepath}` });
           totalFiles++;
         });
-        console.log(`✅ Added ${Object.keys(frontendFiles).length} frontend files`);
+        console.log(`✅ Added ${Object.keys(cleanedFrontendFiles).length} frontend files`);
       }
 
       // ==========================================
       // BACKEND FILES
       // ==========================================
-      if (results.phase3.backend?.files) {
-        const backendFiles = results.phase3.backend.files;
+      if (Object.keys(backendFiles).length > 0) {
         Object.entries(backendFiles).forEach(([filepath, content]) => {
-          archive.append(content, { name: `backend/${filepath}` });
+          // Clean backend files too
+          let cleaned = content
+            .replace(/```[\w]*\n?/g, '')
+            .replace(/```\s*$/g, '')
+            .replace(/<\|.*?\|>/g, '')
+            .trim();
+          
+          archive.append(cleaned, { name: `backend/${filepath}` });
           totalFiles++;
         });
         console.log(`✅ Added ${Object.keys(backendFiles).length} backend files`);

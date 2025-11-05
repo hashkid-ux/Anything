@@ -210,22 +210,62 @@ Create a detailed persuasion map in JSON:
     try {
       const response = await this.client.create({
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 4000
+        max_tokens: 4000,
+        temperature: 0.1
       });
 
       const content = response.content[0].text;
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
       
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
+      // ← ADD: Robust extraction
+    const cleaned = this.extractCleanJSON(content);
+    if (!cleaned) {
+      return this.getDefaultPersuasionMap();
+    }
+    
+    return JSON.parse(cleaned);
 
-      throw new Error('Failed to parse persuasion architecture');
     } catch (error) {
       console.error('   ❌ Persuasion architecture error:', error);
       return this.getDefaultPersuasionMap();
     }
   }
+
+  // ← ADD NEW METHOD:
+extractCleanJSON(text) {
+  // Remove markdown
+  text = text.replace(/```(?:json)?\s*/g, '').replace(/```\s*$/g, '');
+  
+  // Find boundaries
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  
+  if (start === -1 || end === -1) return null;
+  
+  let json = text.substring(start, end + 1);
+  
+  // Fix common issues
+  json = json.replace(/,(\s*[}\]])/g, '$1');  // trailing commas
+  json = json.replace(/\\/g, '\\\\');         // escape backslashes
+  json = json.replace(/\n/g, ' ');            // newlines
+  
+  // Test parse
+  try {
+    JSON.parse(json);
+    return json;
+  } catch (e) {
+    // Truncate at error position
+    const match = e.message.match(/position (\d+)/);
+    if (match) {
+      const pos = parseInt(match[1]);
+      const truncated = json.substring(0, pos);
+      const lastComplete = truncated.lastIndexOf('}');
+      if (lastComplete > 0) {
+        return json.substring(0, lastComplete + 1);
+      }
+    }
+    return null;
+  }
+}
 
   async designEmotionalJourney(market, trends, dateContext) {
     console.log('   💭 Designing emotional journey...');

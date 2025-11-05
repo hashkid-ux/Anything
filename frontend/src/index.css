@@ -637,3 +637,19 @@ img[loading="lazy"].loaded {
   --z-popover: 1060;
   --z-tooltip: 1070;
 }
+
+/* Scrollbar hiding for mobile tabs */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Touch optimization */
+.touch-manipulation {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}

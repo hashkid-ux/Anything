@@ -309,16 +309,23 @@ Generate complete ${routeConfig.path} with:
 - Error handling
 - JSDoc comments
 
-Return ONLY the complete JavaScript code, no markdown.`;
+CRITICAL RULES:
+1. Return ONLY executable JavaScript code
+2. NO markdown, NO explanations, NO comments outside code
+
+Generate the complete component now.`;
+
 
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 2000,
+      max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }]
     });
 
     let code = response.content[0].text;
-    code = code.replace(/```(?:javascript|js)?\n?/g, '').replace(/```\n?$/g, '');
+
+    // AGGRESSIVE CLEANING - Apply BEFORE any processing
+    code = this.aggressiveClean(code);
     
     return code.trim();
   }
@@ -340,19 +347,64 @@ Generate complete ${controllerConfig.path} with:
 - JSDoc comments
 - Async/await pattern
 
-Return ONLY the complete JavaScript code, no markdown.`;
+CRITICAL RULES:
+1. Return ONLY executable JavaScript code
+2. NO markdown, NO explanations, NO comments outside code
+
+Generate the complete component now.`;
+
 
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 3000,
+      max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }]
     });
 
     let code = response.content[0].text;
-    code = code.replace(/```(?:javascript|js)?\n?/g, '').replace(/```\n?$/g, '');
+    
+    // AGGRESSIVE CLEANING - Apply BEFORE any processing
+    code = this.aggressiveClean(code);
     
     return code.trim();
   }
+
+  // Add this NEW method to the class
+aggressiveClean(code) {
+  if (!code) return '';
+  
+  // Step 1: Remove ALL non-code artifacts
+  let cleaned = code
+    // Remove markdown blocks
+    .replace(/```[\w]*\n?/g, '')
+    .replace(/```\s*$/g, '')
+    
+    // Remove tokenization artifacts (CRITICAL)
+    .replace(/<\|.*?\|>/g, '')
+    .replace(/\|begin_of_sentence\|/gi, '')
+    .replace(/\|end_of_turn\|/gi, '')
+    .replace(/\|start_header_id\|/gi, '')
+    .replace(/\|end_header_id\|/gi, '')
+    .replace(/[｜▁]/g, '')
+    
+    // Remove BOM and invisible characters
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    
+    // Remove triple+ newlines
+    .replace(/\n{3,}/g, '\n\n')
+    
+    .trim();
+  
+  // Step 2: Validate it's actually code
+  if (cleaned.length < 20) return '';
+  if (!cleaned.includes('function') && !cleaned.includes('const')) return '';
+  if (cleaned.includes('｜') || cleaned.includes('▁')) {
+    console.error('❌ CONTAMINATED CODE DETECTED - Using fallback');
+    return '';
+  }
+  
+  return cleaned;
+}
 
   async generateMiddleware(middlewareConfig, projectData) {
     
@@ -369,16 +421,23 @@ Generate complete ${middlewareConfig.path} with:
 - JWT verification (if auth middleware)
 - JSDoc comments
 
-Return ONLY the complete JavaScript code, no markdown.`;
+CRITICAL RULES:
+1. Return ONLY executable JavaScript code
+2. NO markdown, NO explanations, NO comments outside code
+
+Generate the complete component now.`;
+
 
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 2000,
+      max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }]
     });
 
     let code = response.content[0].text;
-    code = code.replace(/```(?:javascript|js)?\n?/g, '').replace(/```\n?$/g, '');
+    
+     // AGGRESSIVE CLEANING - Apply BEFORE any processing
+    code = this.aggressiveClean(code);
     
     return code.trim();
   }

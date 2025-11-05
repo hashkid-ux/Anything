@@ -94,80 +94,143 @@ function BuildingProgress({ prompt, onComplete, onCancel }) {
   // FUNCTION: Initialize build
   // ============================================
   const initializeBuild = async () => {
-    try {
-      addLog('🚀 Starting new build...', 'info');
-      setBuildState('STARTING');
+  // CHECK URL params first (works cross-device + browser restart)
+  const urlParams = new URLSearchParams(window.location.search);
+  const resumeBuildId = urlParams.get('resumeBuild');
+  const resumeProjectId = urlParams.get('projectId');
+  
+  if (resumeBuildId && resumeProjectId) {
+    console.log('✅ RESUMING from URL:', resumeBuildId);
+    
+    if (mountedRef.current) {
+      setBuildId(resumeBuildId);
+      setProjectId(resumeProjectId);
+      setBuildState('BUILDING');
       
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Authentication required. Please login.');
-      }
-
-      // Extract project name from prompt
-      const projectName = extractProjectName(prompt);
+      addLog('🔄 Resumed monitoring existing build', 'success');
+      addLog(`🆔 Build ID: ${resumeBuildId.substring(0, 16)}...`, 'info');
       
-      addLog(`📝 Project: ${projectName}`, 'info');
-      addLog('🔧 Configuring build parameters...', 'info');
-
-      // Call backend to start build
-      const response = await fetch(`${API_BASE_URL}/api/master/build`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          projectName,
-          description: prompt,
-          targetCountry: 'Global',
-          features: [],
-          framework: 'react',
-          database: 'postgresql',
-          targetPlatform: 'web'
-        })
+      setProgress({
+        phase: 'research',
+        progress: 0,
+        message: 'Reconnecting to build...'
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Server error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (!data.build_id || !data.project_id) {
-        throw new Error('Invalid response from server - missing build identifiers');
-      }
-
-      // SUCCESS - Build started
-      if (mountedRef.current) {
-        setBuildId(data.build_id);
-        setProjectId(data.project_id);
-        setBuildState('BUILDING');
-        
-        // Save to session storage for recovery
-        sessionStorage.setItem('currentBuildId', data.build_id);
-        sessionStorage.setItem('currentProjectId', data.project_id);
-        
-        addLog('✅ Build started successfully!', 'success');
-        addLog(`🆔 Build ID: ${data.build_id.substring(0, 16)}...`, 'info');
-        
-        setProgress({
-          phase: 'research',
-          progress: 5,
-          message: '🔍 Starting market research...'
-        });
-      }
-      
-    } catch (error) {
-      console.error('❌ Build initialization failed:', error);
-      
-      if (mountedRef.current) {
-        setBuildState('FAILED');
-        setError(error.message);
-        addLog(`❌ Failed to start: ${error.message}`, 'error');
-      }
+    
+            // CRITICAL FIX: Manually start polling after state update
+      setTimeout(() => {
+        if (mountedRef.current) {
+          startPolling();
+        }
+      }, 100);
     }
-  };
+    
+    // Clear URL params after reading
+    window.history.replaceState({}, '', window.location.pathname);
+    return; // EXIT - don't start new build
+  }
+  
+  // FALLBACK: Check sessionStorage (same browser session only)
+  const sessionBuildId = sessionStorage.getItem('currentBuildId');
+  const sessionProjectId = sessionStorage.getItem('currentProjectId');
+  
+  if (sessionBuildId && sessionProjectId) {
+    console.log('✅ RESUMING from session:', sessionBuildId);
+    
+    if (mountedRef.current) {
+      setBuildId(sessionBuildId);
+      setProjectId(sessionProjectId);
+      setBuildState('BUILDING');
+      
+      addLog('🔄 Resumed from session storage', 'success');
+      
+      setProgress({
+        phase: 'research',
+        progress: 0,
+        message: 'Reconnecting to build...'
+      });
+    
+            // CRITICAL FIX: Manually start polling after state update
+      setTimeout(() => {
+        if (mountedRef.current) {
+          startPolling();
+        }
+      }, 100);
+    }
+
+    return; // EXIT - don't start new build
+  }
+  
+  // ONLY reach here if NOT resuming - start NEW build
+  try {
+    addLog('🚀 Starting new build...', 'info');
+    setBuildState('STARTING');
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('Authentication required. Please login.');
+    }
+
+    const projectName = extractProjectName(prompt);
+    
+    addLog(`📝 Project: ${projectName}`, 'info');
+    addLog('🔧 Configuring build parameters...', 'info');
+
+    const response = await fetch(`${API_BASE_URL}/api/master/build`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        projectName,
+        description: prompt,
+        targetCountry: 'Global',
+        features: [],
+        framework: 'react',
+        database: 'postgresql',
+        targetPlatform: 'web'
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Server error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.build_id || !data.project_id) {
+      throw new Error('Invalid response from server - missing build identifiers');
+    }
+
+    if (mountedRef.current) {
+      setBuildId(data.build_id);
+      setProjectId(data.project_id);
+      setBuildState('BUILDING');
+      
+      sessionStorage.setItem('currentBuildId', data.build_id);
+      sessionStorage.setItem('currentProjectId', data.project_id);
+      
+      addLog('✅ Build started successfully!', 'success');
+      addLog(`🆔 Build ID: ${data.build_id.substring(0, 16)}...`, 'info');
+      
+      setProgress({
+        phase: 'research',
+        progress: 5,
+        message: '🔍 Starting market research...'
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Build initialization failed:', error);
+    
+    if (mountedRef.current) {
+      setBuildState('FAILED');
+      setError(error.message);
+      addLog(`❌ Failed to start: ${error.message}`, 'error');
+    }
+  }
+};
 
   // ============================================
   // FUNCTION: Start polling for progress

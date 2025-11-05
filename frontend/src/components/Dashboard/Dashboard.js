@@ -47,23 +47,78 @@ function Dashboard({ user, onLogout, onBuildNew, onOpenPricing }) {
     }
   };
 
-  const handleResumeBuilding = (project) => {
-    console.log('🔄 Resuming build for project:', project.id);
+  // REPLACE handleResumeBuilding in Dashboard.js
+const handleResumeBuilding = async (project) => {
+  console.log('🔄 Attempting to resume build:', project.id);
+  
+  // Use buildId from project object FIRST (it's already loaded)
+  let buildId = project.id;
+  console.log("build_id: ",buildId)
+  
+  if (!buildId) {
+    console.warn('No build_id in project.buildData, checking API...');
     
-    const buildId = project.buildData?.build_id || `build_${Date.now()}_resume`;
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(
+        `${API_BASE_URL}/api/projects/${project.id}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      
+      console.log('📦 API response:', response.data); // DEBUG
+      buildId = response.data.project?.buildData?.build_id;
+    } catch (error) {
+      console.error('API fetch failed:', error);
+    }
+  }
+  
+  if (!buildId) {
+    console.error('❌ No build ID found anywhere');
+    if (!window.confirm('Build ID missing. Start new build?')) return;
+    handleRetryBuild(project);
+    return;
+  }
+  
+  // Verify build exists in backend cache
+  try {
+    const token = localStorage.getItem('token');
+    const buildCheck = await axios.get(
+      `${API_BASE_URL}/api/master/build/${buildId}`,
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    );
     
-    sessionStorage.setItem('currentBuildId', buildId);
-    sessionStorage.setItem('currentProjectId', project.id);
+    if (buildCheck.data.status === 'building') {
+      // Update URL with build params
+      const url = new URL(window.location);
+      url.searchParams.set('resumeBuild', buildId);
+      url.searchParams.set('projectId', project.id);
+      window.history.pushState({}, '', url);
+      
+      window.dispatchEvent(new CustomEvent('resumeBuilding', { 
+        detail: { 
+          buildId: buildId,
+          projectId: project.id,
+          prompt: project.description || project.prompt,
+          projectName: project.name,
+          currentProgress: buildCheck.data.progress || 0
+        } 
+      }));
+      return;
+    }
     
-    window.dispatchEvent(new CustomEvent('resumeBuilding', { 
-      detail: { 
-        projectId: project.id,
-        buildId: buildId,
-        prompt: project.description || project.prompt,
-        projectName: project.name
-      } 
-    }));
-  };
+    if (buildCheck.data.status === 'completed') {
+      handleViewPreview(project);
+      return;
+    }
+    
+  } catch (error) {
+    console.warn('⚠️ Build expired (24h cache limit):', error.message);
+  }
+  
+  // Build expired - offer retry
+  if (!window.confirm('Build session expired (24h limit). Start new build?')) return;
+  handleRetryBuild(project);
+};
 
   const handleRetryBuild = async (project) => {
     setRetrying(prev => ({ ...prev, [project.id]: true }));

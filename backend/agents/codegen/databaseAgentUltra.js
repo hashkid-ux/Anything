@@ -395,7 +395,10 @@ datasource db {
 
     // 3. Check each table has ID
     for (const table of schemaplan.tables || []) {
-      const hasId = table.fields.some(f => f.attributes.includes('@id'));
+      const hasId = table.fields.some(f => 
+  f.name === 'id' || 
+  (f.attributes && f.attributes.includes('@id'))
+);
       if (!hasId) {
         errors.push(`Table ${table.name} missing primary key`);
       }

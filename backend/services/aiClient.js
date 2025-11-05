@@ -127,6 +127,20 @@ class APIKeyManager extends EventEmitter {
   async getNextAvailableKey() {
     const now = Date.now();
     const totalKeys = this.keys.length;
+
+    // ← ADD: Emergency brake
+  const availableKeys = this.keyHealth.filter(k => 
+    k.isHealthy && 
+    k.rateLimitedUntil < now &&
+    k.requestsInLastMinute < k.estimatedCapacity * 0.8
+  );
+  
+  if (availableKeys.length === 0) {
+    console.warn('⚠️ ALL KEYS EXHAUSTED - forcing 300s cooldown');
+    await this.sleep(300000);
+    // Reset counters
+    this.keyHealth.forEach(k => k.requestsInLastMinute = 0);
+  }
     
     // CRITICAL: Global rate limiting across ALL keys
     const timeSinceGlobalRequest = now - this.globalLastRequestTime;

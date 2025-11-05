@@ -85,7 +85,46 @@ function LiveAppPreview({ buildId, files, progress }) {
   };
 
   const createPreviewHTML = (files) => {
-    console.log('🏗️ Building preview HTML...');
+    console.log('🏗️ Building preview HTML with validation...');
+  
+  // CRITICAL: Validate ALL files before processing
+  const validatedFiles = {};
+  let contaminatedCount = 0;
+
+   Object.entries(files).forEach(([path, content]) => {
+    if (typeof content !== 'string') {
+      console.warn(`⚠️ Skipping non-string file: ${path}`);
+      return;
+    }
+    
+    // Check for contamination markers
+    if (content.includes('｜') || content.includes('▁') || content.includes('<|')) {
+      console.error(`🚫 CONTAMINATED: ${path} - Skipping`);
+      contaminatedCount++;
+      return;
+    }
+    
+    // Additional syntax check for JS files
+    if (path.endsWith('.js') || path.endsWith('.jsx')) {
+      // Basic bracket balance check
+      const openBraces = (content.match(/{/g) || []).length;
+      const closeBraces = (content.match(/}/g) || []).length;
+      
+      if (Math.abs(openBraces - closeBraces) > 2) {
+        console.error(`🚫 SYNTAX ERROR: ${path} - Unbalanced braces`);
+        return;
+      }
+    }
+    
+    validatedFiles[path] = content;
+  });
+  
+  if (contaminatedCount > 0) {
+    addLog(`⚠️ Skipped ${contaminatedCount} contaminated files`, 'warning');
+  }
+  
+  console.log(`✅ Validated ${Object.keys(validatedFiles).length} files`);
+  
     
     // Find App.js file (check multiple possible paths)
     const appPaths = [
@@ -100,12 +139,12 @@ function LiveAppPreview({ buildId, files, progress }) {
     let appPath = null;
     
     for (const path of appPaths) {
-      if (files[path]) {
-        appJs = files[path];
-        appPath = path;
-        break;
-      }
+    if (validatedFiles[path]) {
+      appJs = validatedFiles[path];
+      appPath = path;
+      break;
     }
+  }
     
     // **VALIDATE: Check for contamination**
   if (appJs.includes('｜') || appJs.includes('▁')) {
@@ -114,14 +153,14 @@ function LiveAppPreview({ buildId, files, progress }) {
   }
 
     if (!appJs) {
-      console.warn('⚠️ No App.js found, using default');
-      appJs = getDefaultApp();
-    } else {
-      console.log('✅ Found App at:', appPath);
-    }
+    console.warn('⚠️ No valid App.js found - Using fallback');
+    appJs = getDefaultApp();
+  } else {
+    console.log(`✅ Using App from: ${appPath}`);
+  }
     
-    // Extract components
-    const components = extractComponents(files);
+     // Extract and validate components
+  const components = extractComponents(validatedFiles);
     
      // **VALIDATE: Clean each component**
   const cleanComponents = components.map(comp => {
@@ -130,6 +169,7 @@ function LiveAppPreview({ buildId, files, progress }) {
       console.warn('⚠️ Skipping contaminated component');
       return '';
     }
+    
     return cleaned;
   }).filter(Boolean);
 
@@ -137,132 +177,161 @@ function LiveAppPreview({ buildId, files, progress }) {
     console.log(`📦 Extracted ${components.length} components`);
     
     // Build HTML
-    return `<!DOCTYPE html>
+    // Build HTML with error boundaries
+  return buildSafeHTML(appJs, components);
+  
+  };
+
+  const buildSafeHTML = (appJs, components) => {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Live Preview - Launch AI</title>
-  
-  <!-- Tailwind CSS -->
+  <title>Live Preview</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- React 18 -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  
-  <!-- Babel Standalone (for JSX transpilation) -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
-  <!-- Lucide Icons (optional) -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  
   <style>
-    * { 
-      margin: 0; 
-      padding: 0; 
-      box-sizing: border-box; 
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-      background: linear-gradient(to bottom right, #0f172a, #1e1b4b);
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-    #root {
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: system-ui, -apple-system, sans-serif; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       min-height: 100vh;
     }
-    /* Loading state */
-    .preview-loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
+    #root { min-height: 100vh; }
+    .error-boundary {
+      padding: 2rem;
+      text-align: center;
       color: white;
     }
   </style>
 </head>
 <body>
   <div id="root">
-    <div class="preview-loading">
-      <div>Loading preview...</div>
-    </div>
+    <div class="error-boundary">Loading...</div>
   </div>
   
   <script type="text/babel">
-    // Setup React hooks
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect, useRef, createContext, useContext } = React;
     
-    // Inject components
-    ${components.join('\n\n')}
+    // Error Boundary Component
+    class ErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+      }
+      
+      static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      }
+      
+      componentDidCatch(error, errorInfo) {
+        console.error('React Error:', error, errorInfo);
+        window.parent.postMessage({ 
+          type: 'PREVIEW_ERROR', 
+          error: error.message 
+        }, '*');
+      }
+      
+      render() {
+        if (this.state.hasError) {
+          return (
+            <div className="error-boundary">
+              <h1 style={{fontSize: '2rem', marginBottom: '1rem', color: '#ef4444'}}>
+                Preview Error
+              </h1>
+              <p style={{color: '#fca5a5', marginBottom: '1rem'}}>
+                {this.state.error?.message || 'An error occurred'}
+              </p>
+              <button 
+                onClick={() => window.location.reload()}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Reload Preview
+              </button>
+            </div>
+          );
+        }
+        
+        return this.props.children;
+      }
+    }
     
-    // Main App component
-    ${sanitizeCode(appJs)}
+    // Inject components safely
+    ${components.map((comp, i) => {
+      return `try { ${comp} } catch(e) { console.error('Component ${i} error:', e); }`;
+    }).join('\n\n')}
     
-    // Render App
+    // Main App
     try {
-      const container = document.getElementById('root');
-      const root = ReactDOM.createRoot(container);
-      
-      root.render(
-        <React.StrictMode>
-          <App />
-        </React.StrictMode>
-      );
-      
-      // Notify parent window
-      window.parent.postMessage({ 
-        type: 'PREVIEW_READY',
-        timestamp: new Date().toISOString()
-      }, '*');
-      
-      console.log('✅ Preview rendered successfully');
-      
-    } catch (error) {
-      console.error('❌ Render error:', error);
-      
-      // Show error in UI
-      const container = document.getElementById('root');
-      container.innerHTML = \`
-        <div style="padding: 2rem; color: white; text-align: center;">
-          <h1 style="color: #ef4444; font-size: 1.5rem; margin-bottom: 1rem;">Preview Error</h1>
-          <p style="color: #94a3b8; margin-bottom: 0.5rem;">\${error.message}</p>
-          <pre style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 0.5rem; text-align: left; overflow-x: auto; font-size: 0.75rem; color: #f87171;">\${error.stack}</pre>
-        </div>
-      \`;
-      
-      // Notify parent
+      ${appJs}
+    } catch(e) {
+      console.error('App.js error:', e);
       window.parent.postMessage({ 
         type: 'PREVIEW_ERROR', 
-        error: error.message,
-        stack: error.stack
+        error: 'App.js failed to load: ' + e.message 
+      }, '*');
+    }
+    
+    // Render
+    try {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      );
+      
+      window.parent.postMessage({ type: 'PREVIEW_READY' }, '*');
+      console.log('✅ Preview rendered');
+    } catch (error) {
+      console.error('Render error:', error);
+      document.getElementById('root').innerHTML = \`
+        <div class="error-boundary">
+          <h1 style="color: #ef4444; font-size: 2rem; margin-bottom: 1rem;">
+            Render Failed
+          </h1>
+          <p style="color: #fca5a5;">\${error.message}</p>
+        </div>
+      \`;
+      window.parent.postMessage({ 
+        type: 'PREVIEW_ERROR', 
+        error: error.message 
       }, '*');
     }
   </script>
   
-  <!-- Global error handler -->
   <script>
-    window.addEventListener('error', (event) => {
-      console.error('❌ Global error:', event.error);
+    // Global error handler
+    window.addEventListener('error', (e) => {
+      console.error('Global error:', e.error);
       window.parent.postMessage({ 
         type: 'PREVIEW_ERROR', 
-        error: event.error?.message || event.message,
-        stack: event.error?.stack
+        error: e.error?.message || e.message 
       }, '*');
     });
     
-    window.addEventListener('unhandledrejection', (event) => {
-      console.error('❌ Unhandled promise rejection:', event.reason);
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('Unhandled rejection:', e.reason);
       window.parent.postMessage({ 
         type: 'PREVIEW_ERROR', 
-        error: event.reason?.message || 'Promise rejection',
-        stack: event.reason?.stack
+        error: e.reason?.message || 'Promise rejection' 
       }, '*');
     });
   </script>
 </body>
 </html>`;
-  };
+};
 
   const extractComponents = (files) => {
   const components = [];
