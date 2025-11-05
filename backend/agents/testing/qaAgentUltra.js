@@ -54,7 +54,7 @@ class QAAgentUltra {
     
     if (attempt < 3) {
       console.log(`⏳ Retry ${attempt + 1}/3...`);
-      await this.sleep(3000);
+      await new Promise(resolve => setTimeout(resolve, 3000)); 
     }
   }
 }
