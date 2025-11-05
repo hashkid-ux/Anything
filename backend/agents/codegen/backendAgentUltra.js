@@ -439,8 +439,18 @@ async validateAndAutoFix(code, filepath, maxRetries = 2) {
       
       code = fixed; // Use AI's attempt for next iteration
     } catch (error) {
-      console.error(`❌ AI fix attempt ${attempt} failed:`, error.message);
+    console.error(`❌ AI fix attempt ${attempt} failed:`, error.message);
+    
+    // ADD THIS: If JSON error, use fallback immediately
+    if (error.message.includes('JSON') || error.message.includes('parse')) {
+      console.log('🔧 JSON error detected, using fallback template');
+      return { 
+        valid: false, 
+        code: this.getFallbackTemplate(filepath), 
+        attempts: maxRetries 
+      };
     }
+  }
   }
   
   // AI couldn't fix it - use fallback template
@@ -488,39 +498,31 @@ quickSyntaxCheck(code, filepath) {
   return { valid: errors.length === 0, errors };
 }
 
-// AI-powered code repair
 async aiRepairCode(brokenCode, errors, filepath) {
-  const prompt = `Fix this JavaScript code. It has these syntax errors:
-${errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}
-
-FILE: ${filepath}
-
-BROKEN CODE:
-\`\`\`javascript
-${brokenCode}
-\`\`\`
-
-CRITICAL RULES:
-1. Return ONLY the fixed JavaScript code
-2. NO explanations, NO markdown blocks
-3. Fix syntax errors but preserve logic
-4. If using "!", ensure proper && or || operators
-5. Balance all brackets/parentheses
-6. Remove any tokenization artifacts (｜, ▁, <|)
-
-Fixed code:`;
+  const prompt = `Fix this JavaScript code...`;
 
   const response = await this.client.messages.create({
     model: this.model,
     max_tokens: 3000,
-    temperature: 0.1, // Low temp for precise fixes
-    messages: [{ role: 'user', content: prompt }]
+    temperature: 0.1,
   });
 
   let fixed = response.content[0].text.trim();
   
-  // Aggressive clean on AI output
-  fixed = this.aggressiveClean(fixed);
+  // ADD THIS: Nuclear cleaning
+  fixed = fixed
+    .replace(/[｜▁]/g, '')  // Remove all tokenization chars
+    .replace(/<\|.*?\|>/g, '')  // Remove special tokens
+    .replace(/```[\w]*\n?/g, '')  // Remove markdown
+    .replace(/\|begin_of_sentence\|/gi, '')
+    .replace(/\|end_of_turn\|/gi, '')
+    .trim();
+  
+  // Validate it's actual code
+  if (fixed.length < 20 || !fixed.includes('function')) {
+    console.error('❌ Cleaned code invalid, using fallback');
+    return this.getFallbackTemplate(filepath);
+  }
   
   return fixed;
 }

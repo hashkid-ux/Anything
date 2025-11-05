@@ -34,20 +34,31 @@ class QAAgentUltra {
     
     // AUTO-FIX if enabled and issues found
     if (projectData.autoFix !== false && results.critical_issues.length > 0) {
-      console.log('🔧 Auto-fixing critical issues...');
-      const fixedFiles = await this.autoFixIssues(allFiles, results.critical_issues, projectData);
+  console.log(`🔧 Auto-fixing ${results.critical_issues.length} critical issues...`);
+  
+  // CHANGE THIS: Try up to 3 times
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const fixedFiles = await this.autoFixIssues(allFiles, results.critical_issues, projectData);
+    
+    if (fixedFiles) {
+      const retest = await this.retestFiles(fixedFiles);
       
-      if (fixedFiles) {
-        // Re-test to verify fixes
-        const retest = await this.retestFiles(fixedFiles);
-        if (retest.overall_score > results.overall_score) {
-          results.autoFixedIssues = results.critical_issues.length;
-          results.overall_score = retest.overall_score;
-          results.critical_issues = retest.critical_issues;
-          console.log(`✅ Auto-fixed ${results.autoFixedIssues} issues`);
-        }
+      if (retest.overall_score > results.overall_score) {
+        results.autoFixedIssues = results.critical_issues.length;
+        results.overall_score = retest.overall_score;
+        results.critical_issues = retest.critical_issues;
+        console.log(`✅ Auto-fixed on attempt ${attempt}`);
+        break;
       }
     }
+    
+    if (attempt < 3) {
+      console.log(`⏳ Retry ${attempt + 1}/3...`);
+      await this.sleep(3000);
+    }
+  }
+}
+
     
     // Generate recommendations
     results.recommendations = this.generateRecommendations(results);
