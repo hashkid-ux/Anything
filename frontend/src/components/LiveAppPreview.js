@@ -1,5 +1,5 @@
 // frontend/src/components/LiveAppPreview.js
-// FULLY FIXED - Production Ready with Comprehensive Error Handling
+// FULLY FIXED - Handles React Router and JSX properly
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -18,25 +18,19 @@ function LiveAppPreview({ buildId, files, progress }) {
   const [selectedFile, setSelectedFile] = useState('src/App.js');
   const iframeRef = useRef(null);
   const previousFilesRef = useRef({});
-  // Add state for AI repair tracking
-const [repairAttempts, setRepairAttempts] = useState(0);
-const [lastRepairError, setLastRepairError] = useState(null);
 
-  // Initialize preview when files are available
   useEffect(() => {
     if (files && Object.keys(files).length > 0) {
-      // Check if files actually changed (avoid re-rendering on same files)
       const filesChanged = JSON.stringify(files) !== JSON.stringify(previousFilesRef.current);
       
       if (filesChanged) {
-        console.log('🔄 Files changed, updating preview. Files count:', Object.keys(files).length);
+        console.log('🔄 Files changed, regenerating preview. Files count:', Object.keys(files).length);
         previousFilesRef.current = files;
         initializePreview();
       }
     }
   }, [files]);
 
-  // Listen for iframe messages
   useEffect(() => {
     const handleMessage = (event) => {
       if (event.data.type === 'PREVIEW_READY') {
@@ -45,6 +39,9 @@ const [lastRepairError, setLastRepairError] = useState(null);
       } else if (event.data.type === 'PREVIEW_ERROR') {
         setPreviewError(event.data.error);
         addLog(`❌ Runtime Error: ${event.data.error}`, 'error');
+      } else if (event.data.type === 'BABEL_ERROR') {
+        setPreviewError(`JSX Compilation Error: ${event.data.error}`);
+        addLog(`❌ Babel Error: ${event.data.error}`, 'error');
       }
     };
     
@@ -56,17 +53,16 @@ const [lastRepairError, setLastRepairError] = useState(null);
     try {
       setPreviewError(null);
       setPreviewReady(false);
-      addLog('🔧 Initializing preview...', 'info');
+      addLog('🔧 Initializing browser-compatible preview...', 'info');
       
-      // Validate files
       if (!files || Object.keys(files).length === 0) {
         throw new Error('No files available for preview');
       }
 
       console.log('📁 Available files:', Object.keys(files));
 
-      // Create preview HTML
-      const html = createPreviewHTML(files);
+      // Create browser-compatible preview HTML
+      const html = createBrowserPreviewHTML(files);
       
       // Create blob URL
       const blob = new Blob([html], { type: 'text/html' });
@@ -78,7 +74,7 @@ const [lastRepairError, setLastRepairError] = useState(null);
       }
       
       setPreviewUrl(url);
-      addLog('✅ Preview HTML created', 'success');
+      addLog('✅ Preview ready!', 'success');
       
     } catch (error) {
       console.error('❌ Preview initialization error:', error);
@@ -87,105 +83,71 @@ const [lastRepairError, setLastRepairError] = useState(null);
     }
   };
 
-  // Replace createPreviewHTML with AI-aware version
-const createPreviewHTML = async (files) => {
-  try {
-    console.log('🏗️ Building preview with AI validation...');
-    
-    // Validate App.js
-    const appPaths = ['src/App.js', 'frontend/src/App.js', 'App.js'];
-    let appJs = null;
-    let appPath = null;
-    
-    for (const path of appPaths) {
-      if (files[path]) {
-        appJs = files[path];
-        appPath = path;
-        break;
-      }
-    }
-    
-    if (!appJs) {
-      appJs = getDefaultApp();
-    } else {
-      // AI validation for App.js
-      const validation = await validateComponentWithAI(appJs, appPath);
-      if (!validation.valid && repairAttempts < 2) {
-        addLog('🔧 App.js has errors, asking AI to fix...', 'warning');
-        setRepairAttempts(prev => prev + 1);
-        
-        const fixed = await repairComponentWithAI(appJs, validation.errors);
-        if (fixed) {
-          appJs = fixed;
-          addLog('✅ AI repaired App.js', 'success');
+  const createBrowserPreviewHTML = (files) => {
+    try {
+      addLog('🎨 Generating browser preview...', 'info');
+      
+      // Find App.js
+      const appPaths = ['src/App.js', 'frontend/src/App.js', 'App.js'];
+      let appJs = null;
+      
+      for (const path of appPaths) {
+        if (files[path]) {
+          appJs = files[path];
+          addLog(`✅ Found ${path}`, 'success');
+          break;
         }
       }
+      
+      if (!appJs) {
+        addLog('⚠️ App.js not found, using default', 'warning');
+        appJs = getDefaultApp();
+      } else {
+        // Strip imports and fix React Router
+        appJs = fixAppJsForBrowser(appJs);
+      }
+      
+      // Extract components
+      const components = extractComponents(files);
+      
+      const html = buildBrowserHTML(appJs, components);
+      addLog('✅ Browser-compatible HTML generated', 'success');
+      
+      return html;
+      
+    } catch (error) {
+      console.error('Preview build error:', error);
+      return buildBrowserHTML(getDefaultApp(), []);
+    }
+  };
+
+  const fixAppJsForBrowser = (code) => {
+    let fixed = code;
+    
+    // Remove all imports
+    fixed = fixed.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
+    
+    // Check if it uses React Router
+    const usesRouter = fixed.includes('<Router') || fixed.includes('<Routes') || fixed.includes('<Route');
+    
+    if (usesRouter) {
+      // Strip Router components but keep the content
+      fixed = fixed
+        .replace(/<Router[^>]*>/g, '<>')
+        .replace(/<\/Router>/g, '</>')
+        .replace(/<Routes[^>]*>/g, '<>')
+        .replace(/<\/Routes>/g, '</>')
+        .replace(/<Route\s+path="[^"]*"\s+element=\{([^}]+)\}\s*\/>/g, '$1');
     }
     
-    // Extract and validate components
-    const components = extractComponents(files);
+    // Remove export statements
+    fixed = fixed.replace(/export\s+default\s+/g, '');
     
-    return buildSafeHTML(appJs, components);
-    
-  } catch (error) {
-    console.error('Preview build error:', error);
-    setLastRepairError(error.message);
-    return buildSafeHTML(getDefaultApp(), []);
-  }
-};
+    return fixed.trim();
+  };
 
-// AI component validation
-const validateComponentWithAI = async (code, filepath) => {
-  try {
-    // Quick syntax check
-    const openCount = (code.match(/\(/g) || []).length;
-    const closeCount = (code.match(/\)/g) || []).length;
-    const braceOpen = (code.match(/\{/g) || []).length;
-    const braceClose = (code.match(/\}/g) || []).length;
-    
-    const errors = [];
-    if (openCount !== closeCount) errors.push(`Unbalanced parentheses: ${openCount} open, ${closeCount} close`);
-    if (braceOpen !== braceClose) errors.push(`Unbalanced braces: ${braceOpen} open, ${braceClose} close`);
-    if (/\s!\s(?!==)/.test(code)) errors.push('Standalone ! operator');
-    
-    return { valid: errors.length === 0, errors };
-  } catch (error) {
-    return { valid: false, errors: [error.message] };
-  }
-};
-
-// AI component repair
-const repairComponentWithAI = async (brokenCode, errors) => {
-  try {
-    const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin;
-    const token = localStorage.getItem('token');
-    
-    const response = await fetch(`${API_BASE_URL}/api/repair-code`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        code: brokenCode,
-        errors: errors,
-        language: 'javascript'
-      })
-    });
-    
-    if (!response.ok) throw new Error('AI repair failed');
-    
-    const data = await response.json();
-    return data.fixed_code;
-    
-  } catch (error) {
-    console.error('AI repair error:', error);
-    return null;
-  }
-};
-
-  const buildSafeHTML = (appJs, components) => {
-  return `<!DOCTYPE html>
+  const buildBrowserHTML = (appJs, components) => {
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -202,24 +164,34 @@ const repairComponentWithAI = async (brokenCode, errors) => {
       font-family: system-ui, -apple-system, sans-serif; 
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       min-height: 100vh;
+      overflow-x: hidden;
     }
     #root { min-height: 100vh; }
     .error-boundary {
       padding: 2rem;
       text-align: center;
       color: white;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
   </style>
 </head>
 <body>
   <div id="root">
-    <div class="error-boundary">Loading...</div>
+    <div class="error-boundary">
+      <div style="font-size: 3rem; margin-bottom: 1rem;">⚛️</div>
+      <div style="font-size: 1.25rem; margin-bottom: 0.5rem;">Loading Preview...</div>
+      <div style="font-size: 0.875rem; color: rgba(255,255,255,0.7);">Compiling React components</div>
+    </div>
   </div>
   
-  <script type="text/babel">
+  <script type="text/babel" data-type="module">
     const { useState, useEffect, useRef, createContext, useContext } = React;
     
-    // Error Boundary Component
+    // Error Boundary
     class ErrorBoundary extends React.Component {
       constructor(props) {
         super(props);
@@ -242,21 +214,24 @@ const repairComponentWithAI = async (brokenCode, errors) => {
         if (this.state.hasError) {
           return (
             <div className="error-boundary">
+              <div style={{fontSize: '3rem', marginBottom: '1rem'}}>❌</div>
               <h1 style={{fontSize: '2rem', marginBottom: '1rem', color: '#ef4444'}}>
                 Preview Error
               </h1>
-              <p style={{color: '#fca5a5', marginBottom: '1rem'}}>
+              <p style={{color: '#fca5a5', marginBottom: '1rem', maxWidth: '500px'}}>
                 {this.state.error?.message || 'An error occurred'}
               </p>
               <button 
                 onClick={() => window.location.reload()}
                 style={{
-                  padding: '0.5rem 1rem',
+                  padding: '0.75rem 1.5rem',
                   background: '#3b82f6',
                   color: 'white',
                   border: 'none',
                   borderRadius: '0.5rem',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: '600'
                 }}
               >
                 Reload Preview
@@ -269,21 +244,13 @@ const repairComponentWithAI = async (brokenCode, errors) => {
       }
     }
     
-    // Inject components safely
+    // Components
     ${components.map((comp, i) => {
-      return `try { ${comp} } catch(e) { console.error('Component ${i} error:', e); }`;
+      return `// Component ${i + 1}\n${comp}`;
     }).join('\n\n')}
     
     // Main App
-    try {
-      ${appJs}
-    } catch(e) {
-      console.error('App.js error:', e);
-      window.parent.postMessage({ 
-        type: 'PREVIEW_ERROR', 
-        error: 'App.js failed to load: ' + e.message 
-      }, '*');
-    }
+    ${appJs}
     
     // Render
     try {
@@ -294,16 +261,20 @@ const repairComponentWithAI = async (brokenCode, errors) => {
         </ErrorBoundary>
       );
       
-      window.parent.postMessage({ type: 'PREVIEW_READY' }, '*');
-      console.log('✅ Preview rendered');
+      setTimeout(() => {
+        window.parent.postMessage({ type: 'PREVIEW_READY' }, '*');
+        console.log('✅ Preview rendered successfully');
+      }, 500);
+      
     } catch (error) {
       console.error('Render error:', error);
       document.getElementById('root').innerHTML = \`
         <div class="error-boundary">
+          <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
           <h1 style="color: #ef4444; font-size: 2rem; margin-bottom: 1rem;">
             Render Failed
           </h1>
-          <p style="color: #fca5a5;">\${error.message}</p>
+          <p style="color: #fca5a5; max-width: 500px;">\${error.message}</p>
         </div>
       \`;
       window.parent.postMessage({ 
@@ -314,13 +285,22 @@ const repairComponentWithAI = async (brokenCode, errors) => {
   </script>
   
   <script>
-    // Global error handler
+    // Global error handlers
     window.addEventListener('error', (e) => {
-      console.error('Global error:', e.error);
-      window.parent.postMessage({ 
-        type: 'PREVIEW_ERROR', 
-        error: e.error?.message || e.message 
-      }, '*');
+      console.error('Global error:', e.error || e.message);
+      
+      // Check if it's a Babel compilation error
+      if (e.message && e.message.includes('Unexpected token')) {
+        window.parent.postMessage({ 
+          type: 'BABEL_ERROR', 
+          error: 'JSX compilation failed. Check your component syntax.' 
+        }, '*');
+      } else {
+        window.parent.postMessage({ 
+          type: 'PREVIEW_ERROR', 
+          error: e.error?.message || e.message 
+        }, '*');
+      }
     });
     
     window.addEventListener('unhandledrejection', (e) => {
@@ -333,82 +313,70 @@ const repairComponentWithAI = async (brokenCode, errors) => {
   </script>
 </body>
 </html>`;
-};
+  };
 
   const extractComponents = (files) => {
-  const components = [];
-  const componentPaths = Object.keys(files).filter(path => 
-    (path.includes('components/') || path.includes('pages/')) && 
-    (path.endsWith('.jsx') || path.endsWith('.js'))
-  );
-  
-  console.log('🔍 Component files found:', componentPaths);
-  
-  componentPaths.forEach(path => {
-    try {
-      const content = files[path];
-      
-      // **PRE-VALIDATE: Skip if contaminated**
-      if (content.includes('｜') || content.includes('▁')) {
-        console.warn(`⚠️ Skipping contaminated file: ${path}`);
-        return;
+    const components = [];
+    const componentPaths = Object.keys(files).filter(path => 
+      (path.includes('components/') || path.includes('pages/')) && 
+      (path.endsWith('.jsx') || path.endsWith('.js')) &&
+      !path.includes('App.js')
+    );
+    
+    console.log('🔍 Component files found:', componentPaths);
+    
+    componentPaths.forEach(path => {
+      try {
+        const content = files[path];
+        
+        // Skip contaminated files
+        if (content.includes('｜') || content.includes('▁') || content.includes('<|')) {
+          console.warn(`⚠️ Skipping contaminated file: ${path}`);
+          return;
+        }
+        
+        const cleaned = sanitizeCode(content);
+        
+        if (cleaned && cleaned.trim().length > 50) {
+          components.push(`// ${path}\n${cleaned}`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Failed to process ${path}:`, error);
       }
-      
-      const cleaned = sanitizeCode(content);
-      
-      if (cleaned && cleaned.trim().length > 0) {
-        components.push(`// Component: ${path}\n${cleaned}`);
-      }
-    } catch (error) {
-      console.warn(`⚠️ Failed to process ${path}:`, error);
-    }
-  });
-  
-  return components;
-};
+    });
+    
+    return components;
+  };
 
   const sanitizeCode = (code) => {
-  if (!code) return '';
-  
-  try {
-    let sanitized = code
-      .replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '')
-      .replace(/export\s+default\s+/g, '')
-      .replace(/export\s+(const|function|class)\s+/g, '$1 ')
-      .replace(/<[｜|][^>]*[｜|]>/g, '')
-      .replace(/[｜|]begin[_▁]of[_▁]sentence[｜|]/gi, '')
-      .replace(/```[\w]*\n?/g, '')
-      .trim();
+    if (!code) return '';
     
-    // CRITICAL: Fix logical operators
-    sanitized = sanitized
-      .replace(/\s+!\s+(\w)/g, ' && !$1')  // Fix "! variable"
-      .replace(/(\w+)\s+!\s+(\w+)/g, '$1 && !$2');  // Fix "var1 ! var2"
-    
-    // Validate parentheses balance
-    let balance = 0;
-    for (const char of sanitized) {
-      if (char === '(') balance++;
-      if (char === ')') balance--;
-    }
-    
-    if (balance > 0) {
-      sanitized += ')'.repeat(balance);
-      console.warn(`⚠️ Auto-closed ${balance} parentheses`);
-    }
-    
-    // Final contamination check
-    if (sanitized.includes('｜') || sanitized.includes('▁')) {
-      console.error('❌ Code still contaminated, skipping');
+    try {
+      let sanitized = code
+        // Remove imports
+        .replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '')
+        // Remove export default
+        .replace(/export\s+default\s+/g, '')
+        // Remove export const/function
+        .replace(/export\s+(const|function|class)\s+/g, '$1 ')
+        // Remove artifacts
+        .replace(/<[｜|][^>]*[｜|]>/g, '')
+        .replace(/[｜|]begin[_▁]of[_▁]sentence[｜|]/gi, '')
+        .replace(/```[\w]*\n?/g, '')
+        .trim();
+      
+      // Final contamination check
+      if (sanitized.includes('｜') || sanitized.includes('▁') || sanitized.includes('<|')) {
+        console.error('❌ Code still contaminated, skipping');
+        return '';
+      }
+      
+      return sanitized;
+    } catch (error) {
+      console.error('Sanitize error:', error);
       return '';
     }
-    
-    return sanitized;
-  } catch (error) {
-    console.error('Sanitize error:', error);
-    return '';
-  }
-};
+  };
 
   const getDefaultApp = () => {
     return `function App() {
@@ -478,12 +446,7 @@ const repairComponentWithAI = async (brokenCode, errors) => {
   };
 
   const addLog = (message, type = 'info') => {
-    const log = {
-      message,
-      type,
-      timestamp: new Date().toISOString()
-    };
-    
+    const log = { message, type, timestamp: new Date().toISOString() };
     setPreviewLogs(prev => [...prev, log].slice(-50));
     console.log(`[Preview ${type.toUpperCase()}]`, message);
   };
@@ -503,8 +466,6 @@ const repairComponentWithAI = async (brokenCode, errors) => {
 
   const currentViewport = viewportSizes[previewMode];
   const ViewportIcon = currentViewport.icon;
-
-  // Get available files for code viewer
   const availableFiles = files ? Object.keys(files).filter(path => 
     path.endsWith('.js') || path.endsWith('.jsx')
   ) : [];
@@ -514,32 +475,18 @@ const repairComponentWithAI = async (brokenCode, errors) => {
       {/* Header */}
       <div className="bg-slate-800/50 backdrop-blur-sm border-b border-slate-700 px-4 py-3">
         <div className="flex items-center justify-between gap-4">
-          {/* Tabs */}
           <div className="flex items-center gap-2">
-            <TabButton 
-              active={activeTab === 'preview'} 
-              onClick={() => setActiveTab('preview')}
-              icon={<Eye className="w-4 h-4" />}
-            >
+            <TabButton active={activeTab === 'preview'} onClick={() => setActiveTab('preview')} icon={<Eye className="w-4 h-4" />}>
               Preview
             </TabButton>
-            <TabButton 
-              active={activeTab === 'code'} 
-              onClick={() => setActiveTab('code')}
-              icon={<Code className="w-4 h-4" />}
-            >
+            <TabButton active={activeTab === 'code'} onClick={() => setActiveTab('code')} icon={<Code className="w-4 h-4" />}>
               Code
             </TabButton>
-            <TabButton 
-              active={activeTab === 'logs'} 
-              onClick={() => setActiveTab('logs')}
-              icon={<Zap className="w-4 h-4" />}
-            >
+            <TabButton active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon={<Zap className="w-4 h-4" />}>
               Logs
             </TabButton>
           </div>
 
-          {/* Viewport Selector (only for preview tab) */}
           {activeTab === 'preview' && (
             <div className="flex items-center gap-2">
               {Object.entries(viewportSizes).map(([key, config]) => {
@@ -549,9 +496,7 @@ const repairComponentWithAI = async (brokenCode, errors) => {
                     key={key}
                     onClick={() => setPreviewMode(key)}
                     className={`p-2 rounded-lg transition-all ${
-                      previewMode === key 
-                        ? 'bg-blue-500 text-white' 
-                        : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                      previewMode === key ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'
                     }`}
                     title={config.label}
                   >
@@ -562,28 +507,18 @@ const repairComponentWithAI = async (brokenCode, errors) => {
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex items-center gap-2">
             {activeTab === 'preview' && (
               <>
-                <button 
-                  onClick={handleRefresh}
-                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-all"
-                  title="Refresh preview"
-                >
+                <button onClick={handleRefresh} className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-all" title="Refresh">
                   <RefreshCw className="w-4 h-4" />
                 </button>
-                <button 
-                  onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-all"
-                  title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-                >
+                <button onClick={() => setIsFullscreen(!isFullscreen)} className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-all">
                   {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                 </button>
               </>
             )}
             
-            {/* Status Indicator */}
             <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-700/50 rounded-lg">
               {previewReady ? (
                 <>
@@ -606,9 +541,8 @@ const repairComponentWithAI = async (brokenCode, errors) => {
         </div>
       </div>
 
-      {/* Content Area */}
+      {/* Content */}
       <div className="h-[600px] bg-slate-900">
-        {/* Preview Tab */}
         {activeTab === 'preview' && (
           <div className="h-full flex items-center justify-center p-4">
             {previewError ? (
@@ -616,28 +550,17 @@ const repairComponentWithAI = async (brokenCode, errors) => {
                 <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
                 <h3 className="text-xl font-bold text-white mb-2">Preview Error</h3>
                 <p className="text-red-300 text-sm mb-4">{previewError}</p>
-                <button
-                  onClick={initializePreview}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all"
-                >
+                <button onClick={initializePreview} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all">
                   Try Again
                 </button>
               </div>
             ) : previewUrl ? (
-              <div 
-                className="bg-white rounded-lg shadow-2xl overflow-hidden transition-all duration-300" 
-                style={{ 
-                  width: currentViewport.width, 
-                  height: currentViewport.height, 
-                  maxWidth: '100%', 
-                  maxHeight: '100%' 
-                }}
-              >
+              <div className="bg-white rounded-lg shadow-2xl overflow-hidden transition-all duration-300" style={{ width: currentViewport.width, height: currentViewport.height, maxWidth: '100%', maxHeight: '100%' }}>
                 <iframe
                   ref={iframeRef}
                   src={previewUrl}
                   className="w-full h-full border-0"
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+                  sandbox="allow-scripts allow-same-origin"
                   title="Live Preview"
                 />
               </div>
@@ -645,47 +568,30 @@ const repairComponentWithAI = async (brokenCode, errors) => {
               <div className="text-center">
                 <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
                 <p className="text-slate-400">Initializing preview...</p>
-                <p className="text-slate-500 text-sm mt-2">
-                  {files && Object.keys(files).length > 0 
-                    ? `Processing ${Object.keys(files).length} files...` 
-                    : 'Waiting for files...'}
-                </p>
               </div>
             )}
           </div>
         )}
 
-        {/* Code Tab */}
         {activeTab === 'code' && (
           <div className="h-full flex">
-            {/* File List */}
             <div className="w-64 bg-slate-800/50 border-r border-slate-700 overflow-y-auto">
               <div className="p-4">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase mb-2">
-                  Files ({availableFiles.length})
-                </h3>
-                {availableFiles.length > 0 ? (
-                  availableFiles.map((path) => (
-                    <button
-                      key={path}
-                      onClick={() => setSelectedFile(path)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm font-mono transition-all mb-1 truncate ${
-                        selectedFile === path 
-                          ? 'bg-blue-500 text-white' 
-                          : 'text-slate-400 hover:text-white hover:bg-slate-700'
-                      }`}
-                      title={path}
-                    >
-                      {path.split('/').pop()}
-                    </button>
-                  ))
-                ) : (
-                  <p className="text-slate-500 text-sm">No files yet...</p>
-                )}
+                <h3 className="text-xs font-semibold text-slate-400 uppercase mb-2">Files ({availableFiles.length})</h3>
+                {availableFiles.map((path) => (
+                  <button
+                    key={path}
+                    onClick={() => setSelectedFile(path)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-mono transition-all mb-1 truncate ${
+                      selectedFile === path ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                    }`}
+                    title={path}
+                  >
+                    {path.split('/').pop()}
+                  </button>
+                ))}
               </div>
             </div>
-            
-            {/* Code View */}
             <div className="flex-1 overflow-auto">
               {files && files[selectedFile] ? (
                 <pre className="p-6 text-slate-300 font-mono text-xs leading-relaxed">
@@ -700,7 +606,6 @@ const repairComponentWithAI = async (brokenCode, errors) => {
           </div>
         )}
 
-        {/* Logs Tab */}
         {activeTab === 'logs' && (
           <div className="h-full overflow-y-auto p-4 font-mono text-xs">
             {previewLogs.length === 0 ? (
@@ -711,25 +616,18 @@ const repairComponentWithAI = async (brokenCode, errors) => {
             ) : (
               <div className="space-y-2">
                 {previewLogs.map((log, i) => (
-                  <div 
-                    key={i} 
-                    className={`flex items-start gap-3 p-3 rounded-lg ${
-                      log.type === 'error' 
-                        ? 'bg-red-500/10 border border-red-500/30' 
-                        : log.type === 'success' 
-                        ? 'bg-green-500/10 border border-green-500/30' 
-                        : 'bg-slate-800/50 border border-slate-700'
-                    }`}
-                  >
+                  <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${
+                    log.type === 'error' ? 'bg-red-500/10 border border-red-500/30' : 
+                    log.type === 'success' ? 'bg-green-500/10 border border-green-500/30' : 
+                    'bg-slate-800/50 border border-slate-700'
+                  }`}>
                     <span className="text-slate-500 text-[10px] mt-0.5">
                       {new Date(log.timestamp).toLocaleTimeString()}
                     </span>
                     <span className={`flex-1 ${
-                      log.type === 'error' 
-                        ? 'text-red-300' 
-                        : log.type === 'success' 
-                        ? 'text-green-300' 
-                        : 'text-slate-300'
+                      log.type === 'error' ? 'text-red-300' : 
+                      log.type === 'success' ? 'text-green-300' : 
+                      'text-slate-300'
                     }`}>
                       {log.message}
                     </span>
@@ -746,7 +644,7 @@ const repairComponentWithAI = async (brokenCode, errors) => {
         <div className="flex items-center gap-4">
           <span>React 18 + Tailwind CSS</span>
           <span>•</span>
-          <span>Sandboxed Environment</span>
+          <span>Browser Preview</span>
           {files && (
             <>
               <span>•</span>
@@ -768,9 +666,7 @@ function TabButton({ active, onClick, icon, children }) {
     <button
       onClick={onClick}
       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-        active 
-          ? 'bg-blue-500 text-white' 
-          : 'text-slate-400 hover:text-white hover:bg-slate-700'
+        active ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'
       }`}
     >
       {icon}
